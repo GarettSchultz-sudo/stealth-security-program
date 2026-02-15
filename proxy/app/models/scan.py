@@ -3,9 +3,18 @@
 import enum
 import uuid
 from datetime import datetime
-from typing import Any
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, Boolean, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -119,9 +128,13 @@ class ClawHubSkill(BaseModel):
     clawhub_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships
-    scans: Mapped[list["SkillScan"]] = relationship(back_populates="skill", cascade="all, delete-orphan")
+    scans: Mapped[list["SkillScan"]] = relationship(
+        back_populates="skill", cascade="all, delete-orphan"
+    )
     trust_score: Mapped["TrustScore | None"] = relationship(back_populates="skill", uselist=False)
-    monitored_by: Mapped[list["MonitoredSkill"]] = relationship(back_populates="skill", cascade="all, delete-orphan")
+    monitored_by: Mapped[list["MonitoredSkill"]] = relationship(
+        back_populates="skill", cascade="all, delete-orphan"
+    )
 
 
 class SkillScan(BaseModel):
@@ -129,12 +142,20 @@ class SkillScan(BaseModel):
 
     __tablename__ = "skill_scans"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
-    skill_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("clawhub_skills.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    skill_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clawhub_skills.id"), nullable=False, index=True
+    )
 
     # Scan configuration
-    profile: Mapped[ScanProfile] = mapped_column(Enum(ScanProfile), default=ScanProfile.STANDARD, nullable=False)
-    status: Mapped[ScanStatus] = mapped_column(Enum(ScanStatus), default=ScanStatus.PENDING, nullable=False)
+    profile: Mapped[ScanProfile] = mapped_column(
+        Enum(ScanProfile), default=ScanProfile.STANDARD, nullable=False
+    )
+    status: Mapped[ScanStatus] = mapped_column(
+        Enum(ScanStatus), default=ScanStatus.PENDING, nullable=False
+    )
 
     # Results
     trust_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -157,7 +178,9 @@ class SkillScan(BaseModel):
 
     # Relationships
     skill: Mapped["ClawHubSkill"] = relationship(back_populates="scans")
-    findings: Mapped[list["SkillFinding"]] = relationship(back_populates="scan", cascade="all, delete-orphan")
+    findings: Mapped[list["SkillFinding"]] = relationship(
+        back_populates="scan", cascade="all, delete-orphan"
+    )
 
 
 class SkillFinding(BaseModel):
@@ -165,9 +188,15 @@ class SkillFinding(BaseModel):
 
     __tablename__ = "skill_findings"
 
-    scan_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("skill_scans.id"), nullable=False, index=True)
-    skill_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("clawhub_skills.id"), nullable=False, index=True)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    scan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("skill_scans.id"), nullable=False, index=True
+    )
+    skill_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clawhub_skills.id"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
 
     # Finding details
     finding_type: Mapped[FindingType] = mapped_column(Enum(FindingType), nullable=False)
@@ -194,11 +223,15 @@ class SkillFinding(BaseModel):
     references: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
 
     # Status
-    status: Mapped[FindingStatus] = mapped_column(Enum(FindingStatus), default=FindingStatus.OPEN, nullable=False)
+    status: Mapped[FindingStatus] = mapped_column(
+        Enum(FindingStatus), default=FindingStatus.OPEN, nullable=False
+    )
     suppressed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     suppressed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     suppress_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    detected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
 
     # Relationships
     scan: Mapped["SkillScan"] = relationship(back_populates="findings")
@@ -209,7 +242,9 @@ class TrustScore(BaseModel):
 
     __tablename__ = "trust_scores"
 
-    skill_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("clawhub_skills.id"), nullable=False, unique=True, index=True)
+    skill_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clawhub_skills.id"), nullable=False, unique=True, index=True
+    )
 
     # Overall score
     overall_score: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -226,11 +261,15 @@ class TrustScore(BaseModel):
     score_breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
 
     # Validity
-    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    valid_from: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Latest scan reference
-    latest_scan_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("skill_scans.id"), nullable=True)
+    latest_scan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("skill_scans.id"), nullable=True
+    )
 
     # Relationships
     skill: Mapped["ClawHubSkill"] = relationship(back_populates="trust_score")
@@ -240,13 +279,21 @@ class MonitoredSkill(BaseModel):
     """User's monitored skills for real-time protection."""
 
     __tablename__ = "monitored_skills"
-    __table_args__ = (UniqueConstraint("user_id", "skill_id", name="uq_monitored_skill_user_skill"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "skill_id", name="uq_monitored_skill_user_skill"),
+    )
 
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
-    skill_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("clawhub_skills.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    skill_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clawhub_skills.id"), nullable=False, index=True
+    )
 
     # Monitoring configuration
-    status: Mapped[MonitorStatus] = mapped_column(Enum(MonitorStatus), default=MonitorStatus.ACTIVE, nullable=False)
+    status: Mapped[MonitorStatus] = mapped_column(
+        Enum(MonitorStatus), default=MonitorStatus.ACTIVE, nullable=False
+    )
     check_interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=3600)
     last_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -275,18 +322,26 @@ class ComplianceReport(BaseModel):
 
     __tablename__ = "compliance_reports"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
 
     # Report details
-    framework: Mapped[ComplianceFramework] = mapped_column(Enum(ComplianceFramework), nullable=False)
+    framework: Mapped[ComplianceFramework] = mapped_column(
+        Enum(ComplianceFramework), nullable=False
+    )
     framework_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     report_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Scope
-    skill_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=False, default=list)
+    skill_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, default=list
+    )
 
     # Results
-    overall_status: Mapped[ComplianceStatus | None] = mapped_column(Enum(ComplianceStatus), nullable=True)
+    overall_status: Mapped[ComplianceStatus | None] = mapped_column(
+        Enum(ComplianceStatus), nullable=True
+    )
     controls_evaluated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     controls_passed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     controls_failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -303,9 +358,15 @@ class ComplianceReport(BaseModel):
     report_format: Mapped[str] = mapped_column(String(20), nullable=False, default="pdf")
 
     # Validity
-    report_period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    report_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    report_period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    report_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -313,9 +374,13 @@ class ScanCredits(BaseModel):
     """User's scan credits allocation."""
 
     __tablename__ = "scan_credits"
-    __table_args__ = (UniqueConstraint("user_id", "period_start", name="uq_scan_credits_user_period"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "period_start", name="uq_scan_credits_user_period"),
+    )
 
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
 
     # Credit allocation
     total_credits: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

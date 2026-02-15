@@ -8,8 +8,8 @@ logs them, enforces budgets, applies routing rules, and forwards to providers.
 import json
 import time
 import uuid
+from collections.abc import AsyncGenerator
 from decimal import Decimal
-from typing import Any, AsyncGenerator
 
 import httpx
 from fastapi import BackgroundTasks, Request
@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core.budget_engine import BudgetEngine
-from app.core.cost_calculator import calculate_cost, get_cost_breakdown
+from app.core.cost_calculator import calculate_cost
 from app.core.pricing_data import PROVIDER_BASE_URLS
 from app.core.smart_router import SmartRouter
 from app.core.stream_handler import StreamHandler
@@ -71,8 +71,7 @@ class ProxyHandler:
         is_streaming = request_data.get("stream", False)
 
         # Estimate input tokens for budget check
-        estimated_input = count_tokens_anthropic(messages, system, model)
-        estimated_output = 500  # Conservative estimate
+        count_tokens_anthropic(messages, system, model)
         estimated_cost = Decimal("0.10")  # Conservative $0.10 estimate
 
         # Check budget
@@ -85,12 +84,14 @@ class ProxyHandler:
 
         if budget_decision.action == "block":
             return Response(
-                content=json.dumps({
-                    "error": {
-                        "type": "budget_exceeded",
-                        "message": "Budget limit exceeded. Please increase your budget or wait for reset.",
+                content=json.dumps(
+                    {
+                        "error": {
+                            "type": "budget_exceeded",
+                            "message": "Budget limit exceeded. Please increase your budget or wait for reset.",
+                        }
                     }
-                }),
+                ),
                 status_code=429,
                 media_type="application/json",
                 headers={
@@ -115,16 +116,20 @@ class ProxyHandler:
             request_data["model"] = model
 
         # Get provider API key from headers
-        provider_api_key = request.headers.get("anthropic-api-key") or request.headers.get("x-api-key")
+        provider_api_key = request.headers.get("anthropic-api-key") or request.headers.get(
+            "x-api-key"
+        )
 
         if not provider_api_key:
             return Response(
-                content=json.dumps({
-                    "error": {
-                        "type": "missing_api_key",
-                        "message": "Missing Anthropic API key. Include 'anthropic-api-key' header.",
+                content=json.dumps(
+                    {
+                        "error": {
+                            "type": "missing_api_key",
+                            "message": "Missing Anthropic API key. Include 'anthropic-api-key' header.",
+                        }
                     }
-                }),
+                ),
                 status_code=401,
                 media_type="application/json",
             )
@@ -204,7 +209,7 @@ class ProxyHandler:
         is_streaming = request_data.get("stream", False)
 
         # Estimate tokens
-        estimated_input = count_tokens_openai(messages, model)
+        count_tokens_openai(messages, model)
         estimated_cost = Decimal("0.10")
 
         # Check budget
@@ -217,9 +222,9 @@ class ProxyHandler:
 
         if budget_decision.action == "block":
             return Response(
-                content=json.dumps({
-                    "error": {"type": "budget_exceeded", "message": "Budget limit exceeded"}
-                }),
+                content=json.dumps(
+                    {"error": {"type": "budget_exceeded", "message": "Budget limit exceeded"}}
+                ),
                 status_code=429,
                 media_type="application/json",
                 headers={"x-acc-request-id": str(request_id)},
@@ -391,7 +396,12 @@ class ProxyHandler:
         """Handle streaming request with SSE."""
 
         async def stream_generator() -> AsyncGenerator[bytes, None]:
-            usage_data = {"input_tokens": 0, "output_tokens": 0, "cache_creation_tokens": 0, "cache_read_tokens": 0}
+            usage_data = {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_creation_tokens": 0,
+                "cache_read_tokens": 0,
+            }
 
             async with self.http_client.stream(
                 "POST",
@@ -409,7 +419,9 @@ class ProxyHandler:
                         try:
                             data = json.loads(data_str)
                             # Extract usage from final chunk
-                            extracted = self.stream_handler.extract_usage_from_stream_chunk(provider, data)
+                            extracted = self.stream_handler.extract_usage_from_stream_chunk(
+                                provider, data
+                            )
                             if extracted:
                                 usage_data.update(extracted)
 

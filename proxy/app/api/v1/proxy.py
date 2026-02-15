@@ -3,12 +3,9 @@
 import hashlib
 import os
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
-from fastapi.responses import Response
 
-from app.core.proxy_handler import ProxyHandler
 from app.config import get_settings
 
 router = APIRouter()
@@ -19,7 +16,7 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 
-async def validate_api_key(api_key: str) -> Optional[dict]:
+async def validate_api_key(api_key: str) -> dict | None:
     """
     Validate API key against Supabase database.
 
@@ -83,8 +80,8 @@ async def validate_api_key(api_key: str) -> Optional[dict]:
 
 
 async def get_current_user_id(
-    authorization: Optional[str] = Header(None, alias="Authorization"),
-    x_acc_api_key: Optional[str] = Header(None, alias="x-acc-api-key"),
+    authorization: str | None = Header(None, alias="Authorization"),
+    x_acc_api_key: str | None = Header(None, alias="x-acc-api-key"),
 ) -> str:
     """
     Validate ACC API key and return user ID.
@@ -99,31 +96,22 @@ async def get_current_user_id(
     if x_acc_api_key:
         api_key = x_acc_api_key
     elif authorization:
-        if authorization.startswith("Bearer "):
-            api_key = authorization[7:]
-        else:
-            api_key = authorization
+        api_key = authorization[7:] if authorization.startswith("Bearer ") else authorization
 
     if not api_key:
         raise HTTPException(
             status_code=401,
-            detail="Missing API key. Use Authorization: Bearer acc_xxx or x-acc-api-key header"
+            detail="Missing API key. Use Authorization: Bearer acc_xxx or x-acc-api-key header",
         )
 
     # Validate the key
     key_info = await validate_api_key(api_key)
 
     if not key_info:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or expired API key"
-        )
+        raise HTTPException(status_code=401, detail="Invalid or expired API key")
 
     if not key_info.get("is_active"):
-        raise HTTPException(
-            status_code=403,
-            detail="API key has been revoked"
-        )
+        raise HTTPException(status_code=403, detail="API key has been revoked")
 
     return key_info["user_id"]
 
@@ -139,7 +127,6 @@ async def anthropic_messages(
 
     Forwards requests to Anthropic and logs usage for cost tracking.
     """
-    import uuid
     import httpx
 
     # Get request body
@@ -160,7 +147,7 @@ async def anthropic_messages(
         }
 
         # Stream or not based on request
-        stream = body.get("stream", False)
+        body.get("stream", False)
 
         response = await client.post(
             "https://api.anthropic.com/v1/messages",
@@ -172,7 +159,7 @@ async def anthropic_messages(
         if response.status_code != 200:
             raise HTTPException(
                 status_code=response.status_code,
-                detail=response.json().get("error", {}).get("message", "Anthropic API error")
+                detail=response.json().get("error", {}).get("message", "Anthropic API error"),
             )
 
         # Log the request to Supabase (background)
@@ -226,7 +213,6 @@ async def openai_chat_completions(
 
     Forwards requests to OpenAI and logs usage for cost tracking.
     """
-    import uuid
     import httpx
 
     # Get request body
@@ -255,7 +241,7 @@ async def openai_chat_completions(
         if response.status_code != 200:
             raise HTTPException(
                 status_code=response.status_code,
-                detail=response.json().get("error", {}).get("message", "OpenAI API error")
+                detail=response.json().get("error", {}).get("message", "OpenAI API error"),
             )
 
         # Log the request to Supabase
@@ -310,5 +296,5 @@ async def list_models():
             {"id": "claude-3-opus-20240229", "object": "model", "owned_by": "anthropic"},
             {"id": "claude-3-sonnet-20240229", "object": "model", "owned_by": "anthropic"},
             {"id": "claude-3-haiku-20240307", "object": "model", "owned_by": "anthropic"},
-        ]
+        ],
     }

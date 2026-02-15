@@ -1,8 +1,8 @@
 """Main FastAPI application factory."""
 
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.config import get_settings
 from app.models.database import init_db
-from app.security import SecurityEngine, SecurityConfig, SecurityMiddleware
+from app.security import SecurityConfig, SecurityEngine, SecurityMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Register default action handlers
         _register_security_handlers(_security_engine)
 
-        logger.info(
-            f"Security engine initialized (level={settings.security_detection_level})"
-        )
+        logger.info(f"Security engine initialized (level={settings.security_detection_level})")
 
     yield
 

@@ -1,5 +1,7 @@
 """Agent model for tracking AI agents."""
 
+from __future__ import annotations
+
 import enum
 import uuid
 from datetime import datetime
@@ -34,12 +36,20 @@ class Agent(BaseModel):
 
     __tablename__ = "agents"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    agent_type: Mapped[AgentType] = mapped_column(Enum(AgentType), default=AgentType.CUSTOM, nullable=False)
-    agent_identifier: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    agent_type: Mapped[AgentType] = mapped_column(
+        Enum(AgentType), default=AgentType.CUSTOM, nullable=False
+    )
+    agent_identifier: Mapped[str] = mapped_column(
+        String(255), nullable=False, unique=True, index=True
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[AgentStatus] = mapped_column(Enum(AgentStatus), default=AgentStatus.ACTIVE, nullable=False)
+    status: Mapped[AgentStatus] = mapped_column(
+        Enum(AgentStatus), default=AgentStatus.ACTIVE, nullable=False
+    )
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
 

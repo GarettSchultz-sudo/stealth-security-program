@@ -4,10 +4,10 @@ Cost calculation utilities.
 Uses Decimal for precision to avoid floating point errors with money.
 """
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from app.core.pricing_data import PRICING_TABLE, ModelPricing, get_pricing
+from app.core.pricing_data import get_pricing
 
 
 def calculate_cost(
@@ -47,8 +47,12 @@ def calculate_cost(
     # Calculate costs for each token type
     input_cost = (Decimal(regular_input_tokens) / Decimal("1_000_000")) * pricing.input_per_mtok
     output_cost = (Decimal(output_tokens) / Decimal("1_000_000")) * pricing.output_per_mtok
-    cache_creation_cost = (Decimal(cache_creation_tokens) / Decimal("1_000_000")) * pricing.cache_create_per_mtok
-    cache_read_cost = (Decimal(cache_read_tokens) / Decimal("1_000_000")) * pricing.cache_read_per_mtok
+    cache_creation_cost = (
+        Decimal(cache_creation_tokens) / Decimal("1_000_000")
+    ) * pricing.cache_create_per_mtok
+    cache_read_cost = (
+        Decimal(cache_read_tokens) / Decimal("1_000_000")
+    ) * pricing.cache_read_per_mtok
 
     total_cost = input_cost + output_cost + cache_creation_cost + cache_read_cost
 
@@ -122,14 +126,24 @@ def get_cost_breakdown(
     regular_input = max(0, input_tokens - cache_creation_tokens - cache_read_tokens)
 
     return {
-        "total": float(calculate_cost(
-            provider, model, input_tokens, output_tokens,
-            cache_creation_tokens, cache_read_tokens
-        )),
+        "total": float(
+            calculate_cost(
+                provider,
+                model,
+                input_tokens,
+                output_tokens,
+                cache_creation_tokens,
+                cache_read_tokens,
+            )
+        ),
         "input": float((Decimal(regular_input) / Decimal("1_000_000")) * pricing.input_per_mtok),
         "output": float((Decimal(output_tokens) / Decimal("1_000_000")) * pricing.output_per_mtok),
-        "cache_creation": float((Decimal(cache_creation_tokens) / Decimal("1_000_000")) * pricing.cache_create_per_mtok),
-        "cache_read": float((Decimal(cache_read_tokens) / Decimal("1_000_000")) * pricing.cache_read_per_mtok),
+        "cache_creation": float(
+            (Decimal(cache_creation_tokens) / Decimal("1_000_000")) * pricing.cache_create_per_mtok
+        ),
+        "cache_read": float(
+            (Decimal(cache_read_tokens) / Decimal("1_000_000")) * pricing.cache_read_per_mtok
+        ),
         "pricing_source": "known",
         "pricing_per_mtok": {
             "input": float(pricing.input_per_mtok),

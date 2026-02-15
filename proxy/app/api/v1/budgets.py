@@ -3,7 +3,6 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -23,9 +22,9 @@ class BudgetCreate(BaseModel):
     period: BudgetPeriod = BudgetPeriod.MONTHLY
     limit_usd: Decimal = Field(..., gt=0)
     scope: BudgetScope = BudgetScope.GLOBAL
-    scope_identifier: Optional[str] = None
+    scope_identifier: str | None = None
     action_on_breach: BudgetAction = BudgetAction.ALERT_ONLY
-    downgrade_model: Optional[str] = None
+    downgrade_model: str | None = None
     warning_threshold_percent: int = Field(default=80, ge=1, le=99)
     critical_threshold_percent: int = Field(default=100, ge=1, le=100)
 
@@ -33,13 +32,13 @@ class BudgetCreate(BaseModel):
 class BudgetUpdate(BaseModel):
     """Request body for updating a budget."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    limit_usd: Optional[Decimal] = Field(None, gt=0)
-    action_on_breach: Optional[BudgetAction] = None
-    downgrade_model: Optional[str] = None
-    warning_threshold_percent: Optional[int] = Field(None, ge=1, le=99)
-    critical_threshold_percent: Optional[int] = Field(None, ge=1, le=100)
-    is_active: Optional[bool] = None
+    name: str | None = Field(None, min_length=1, max_length=255)
+    limit_usd: Decimal | None = Field(None, gt=0)
+    action_on_breach: BudgetAction | None = None
+    downgrade_model: str | None = None
+    warning_threshold_percent: int | None = Field(None, ge=1, le=99)
+    critical_threshold_percent: int | None = Field(None, ge=1, le=100)
+    is_active: bool | None = None
 
 
 class BudgetResponse(BaseModel):
@@ -49,13 +48,13 @@ class BudgetResponse(BaseModel):
     name: str
     period: str
     scope: str
-    scope_identifier: Optional[str]
+    scope_identifier: str | None
     limit_usd: float
     current_spend_usd: float
     remaining_usd: float
     percent_used: float
     action_on_breach: str
-    downgrade_model: Optional[str]
+    downgrade_model: str | None
     warning_threshold_percent: int
     critical_threshold_percent: int
     is_active: bool
@@ -73,7 +72,9 @@ def calculate_next_reset(period: BudgetPeriod) -> datetime:
         return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     elif period == BudgetPeriod.WEEKLY:
         days_until_monday = (7 - now.weekday()) % 7
-        return (now + timedelta(days=days_until_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+        return (now + timedelta(days=days_until_monday)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
     elif period == BudgetPeriod.MONTHLY:
         if now.month == 12:
             return now.replace(year=now.year + 1, month=1, day=1)
@@ -147,7 +148,9 @@ async def list_budgets(
 ) -> list[BudgetResponse]:
     """List all budgets for the current user."""
     result = await db.execute(
-        select(Budget).where(Budget.user_id == uuid.UUID(user_id)).order_by(Budget.created_at.desc())
+        select(Budget)
+        .where(Budget.user_id == uuid.UUID(user_id))
+        .order_by(Budget.created_at.desc())
     )
     budgets = result.scalars().all()
 
@@ -168,7 +171,9 @@ async def list_budgets(
             critical_threshold_percent=b.critical_threshold_percent,
             is_active=b.is_active,
             reset_at=b.reset_at.isoformat(),
-            status=get_budget_status(b.percent_used, b.warning_threshold_percent, b.critical_threshold_percent),
+            status=get_budget_status(
+                b.percent_used, b.warning_threshold_percent, b.critical_threshold_percent
+            ),
         )
         for b in budgets
     ]
@@ -202,7 +207,9 @@ async def get_budget(
         critical_threshold_percent=budget.critical_threshold_percent,
         is_active=budget.is_active,
         reset_at=budget.reset_at.isoformat(),
-        status=get_budget_status(budget.percent_used, budget.warning_threshold_percent, b.critical_threshold_percent),
+        status=get_budget_status(
+            budget.percent_used, budget.warning_threshold_percent, budget.critical_threshold_percent
+        ),
     )
 
 
@@ -242,7 +249,9 @@ async def update_budget(
         critical_threshold_percent=budget.critical_threshold_percent,
         is_active=budget.is_active,
         reset_at=budget.reset_at.isoformat(),
-        status=get_budget_status(budget.percent_used, budget.warning_threshold_percent, budget.critical_threshold_percent),
+        status=get_budget_status(
+            budget.percent_used, budget.warning_threshold_percent, budget.critical_threshold_percent
+        ),
     )
 
 

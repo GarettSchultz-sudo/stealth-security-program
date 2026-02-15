@@ -1,7 +1,6 @@
 """Application configuration using Pydantic Settings."""
 
 from functools import lru_cache
-from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

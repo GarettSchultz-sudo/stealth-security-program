@@ -170,9 +170,8 @@ class SmartRouter:
             return False
 
         # Check each condition
-        if "agent_id" in condition:
-            if str(agent_id) != condition["agent_id"]:
-                return False
+        if "agent_id" in condition and str(agent_id) != condition["agent_id"]:
+            return False
 
         if "model_requested" in condition:
             if not requested_model.startswith(condition["model_requested"]):
@@ -186,9 +185,8 @@ class SmartRouter:
             if estimated_tokens < condition["token_estimate_min"]:
                 return False
 
-        if "task_type" in condition:
-            if task_type != condition["task_type"]:
-                return False
+        if "task_type" in condition and task_type != condition["task_type"]:
+            return False
 
         if "time_of_day_start" in condition and "time_of_day_end" in condition:
             start = condition["time_of_day_start"]
@@ -268,13 +266,15 @@ class SmartRouter:
         output_tokens = estimated_tokens // 2
 
         original_cost = (
-            (Decimal(input_tokens) / Decimal("1_000_000")) * original_pricing.input_per_mtok
-            + (Decimal(output_tokens) / Decimal("1_000_000")) * original_pricing.output_per_mtok
-        )
+            Decimal(input_tokens) / Decimal("1_000_000")
+        ) * original_pricing.input_per_mtok + (
+            Decimal(output_tokens) / Decimal("1_000_000")
+        ) * original_pricing.output_per_mtok
 
         target_cost = (
-            (Decimal(input_tokens) / Decimal("1_000_000")) * target_pricing.input_per_mtok
-            + (Decimal(output_tokens) / Decimal("1_000_000")) * target_pricing.output_per_mtok
-        )
+            Decimal(input_tokens) / Decimal("1_000_000")
+        ) * target_pricing.input_per_mtok + (
+            Decimal(output_tokens) / Decimal("1_000_000")
+        ) * target_pricing.output_per_mtok
 
         return max(Decimal("0"), original_cost - target_cost)

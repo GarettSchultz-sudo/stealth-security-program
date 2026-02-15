@@ -15,14 +15,15 @@ Features:
 """
 
 import asyncio
+import contextlib
 import hashlib
-import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
+
 import aiohttp
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 class IOCType(str, Enum):
     """Types of Indicators of Compromise."""
+
     IP = "ip"
     DOMAIN = "domain"
     URL = "url"
@@ -41,6 +43,7 @@ class IOCType(str, Enum):
 
 class ThreatSeverity(str, Enum):
     """Threat severity levels from intel feeds."""
+
     MALICIOUS = "malicious"
     SUSPICIOUS = "suspicious"
     BENIGN = "benign"
@@ -50,6 +53,7 @@ class ThreatSeverity(str, Enum):
 @dataclass
 class IOC:
     """Indicator of Compromise."""
+
     ioc_type: IOCType
     value: str
     severity: ThreatSeverity
@@ -70,6 +74,7 @@ class IOC:
 @dataclass
 class FeedStatus:
     """Status of a threat intelligence feed."""
+
     name: str
     enabled: bool
     last_update: datetime | None
@@ -103,10 +108,9 @@ class ThreatIntelCache:
         """Add IOC to cache."""
         if len(self._cache) >= self._max_size:
             # Remove oldest entries
-            oldest_keys = sorted(
-                self._cache.keys(),
-                key=lambda k: self._cache[k][1]
-            )[:self._max_size // 10]
+            oldest_keys = sorted(self._cache.keys(), key=lambda k: self._cache[k][1])[
+                : self._max_size // 10
+            ]
             for key in oldest_keys:
                 del self._cache[key]
 
@@ -488,10 +492,7 @@ class ThreatIntelManager:
         )
 
         # Query feeds concurrently
-        tasks = [
-            feed.lookup(ioc_type, value)
-            for feed in feeds_to_query.values()
-        ]
+        tasks = [feed.lookup(ioc_type, value) for feed in feeds_to_query.values()]
 
         feed_results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -513,7 +514,7 @@ class ThreatIntelManager:
 
         lookup_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
 
-        for key, result in zip(tasks.keys(), lookup_results):
+        for key, result in zip(tasks.keys(), lookup_results, strict=False):
             if isinstance(result, list):
                 results[key] = result
 
@@ -527,10 +528,8 @@ class ThreatIntelManager:
         """Stop automatic feed updates."""
         if self._update_task:
             self._update_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._update_task
-            except asyncio.CancelledError:
-                pass
 
     async def _update_loop(self) -> None:
         """Periodic feed update loop."""

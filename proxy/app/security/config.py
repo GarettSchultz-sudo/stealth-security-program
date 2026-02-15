@@ -5,7 +5,6 @@ Defines thresholds, detection levels, and response policies.
 """
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from app.security.models import ResponseAction, SeverityLevel
 

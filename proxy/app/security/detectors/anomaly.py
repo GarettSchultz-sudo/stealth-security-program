@@ -13,8 +13,6 @@ import math
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
-from decimal import Decimal
 from typing import Any
 
 from app.security.detectors.base import SyncDetector
@@ -24,6 +22,7 @@ from app.security.models import DetectionResult, ThreatType
 @dataclass
 class MetricWindow:
     """Sliding window for tracking a metric."""
+
     values: list[float] = field(default_factory=list)
     timestamps: list[float] = field(default_factory=list)
     window_seconds: float = 300.0  # 5 minutes
@@ -64,6 +63,7 @@ class MetricWindow:
 @dataclass
 class AgentMetrics:
     """Tracks various metrics for an agent."""
+
     # Token metrics
     input_tokens: MetricWindow = field(default_factory=lambda: MetricWindow())
     output_tokens: MetricWindow = field(default_factory=lambda: MetricWindow())
@@ -89,8 +89,8 @@ class AnomalyDetector(SyncDetector):
 
     # Anomaly thresholds (z-scores)
     CRITICAL_Z_SCORE = 4.0  # Very unusual
-    HIGH_Z_SCORE = 3.0      # Unusual
-    MEDIUM_Z_SCORE = 2.0    # Somewhat unusual
+    HIGH_Z_SCORE = 3.0  # Unusual
+    MEDIUM_Z_SCORE = 2.0  # Somewhat unusual
 
     def __init__(self):
         super().__init__(
@@ -107,7 +107,7 @@ class AnomalyDetector(SyncDetector):
 
         # Rate of change thresholds
         self._max_token_increase_factor = 5.0  # 5x normal is suspicious
-        self._max_request_size_factor = 10.0   # 10x normal is suspicious
+        self._max_request_size_factor = 10.0  # 10x normal is suspicious
 
     def detect_request_sync(
         self,
@@ -198,19 +198,21 @@ class AnomalyDetector(SyncDetector):
             metrics.error_count += 1
             error_rate = metrics.error_count / max(metrics.request_count, 1)
             if error_rate > 0.5 and metrics.request_count > 10:
-                results.append(self._create_result(
-                    detected=True,
-                    severity="medium",
-                    confidence=0.7,
-                    source="behavioral",
-                    description=f"High error rate detected: {error_rate:.1%}",
-                    evidence={
-                        "error_rate": round(error_rate, 3),
-                        "error_count": metrics.error_count,
-                        "request_count": metrics.request_count,
-                    },
-                    rule_id="anomaly_error_rate_v1",
-                ))
+                results.append(
+                    self._create_result(
+                        detected=True,
+                        severity="medium",
+                        confidence=0.7,
+                        source="behavioral",
+                        description=f"High error rate detected: {error_rate:.1%}",
+                        evidence={
+                            "error_rate": round(error_rate, 3),
+                            "error_count": metrics.error_count,
+                            "request_count": metrics.request_count,
+                        },
+                        rule_id="anomaly_error_rate_v1",
+                    )
+                )
 
         return results
 
@@ -228,9 +230,7 @@ class AnomalyDetector(SyncDetector):
                         total += len(part.get("text", "")) // 4
         return total
 
-    def _check_request_size(
-        self, metrics: AgentMetrics, size: int
-    ) -> list[DetectionResult]:
+    def _check_request_size(self, metrics: AgentMetrics, size: int) -> list[DetectionResult]:
         """Check for request size anomalies."""
         results = []
 
@@ -244,42 +244,44 @@ class AnomalyDetector(SyncDetector):
             z_score = abs((size - mean) / stddev)
 
             if z_score > self.CRITICAL_Z_SCORE:
-                results.append(self._create_result(
-                    detected=True,
-                    severity="high",
-                    confidence=0.8,
-                    source="behavioral",
-                    description=f"Extremely large request detected ({size} bytes, z={z_score:.1f})",
-                    evidence={
-                        "request_size": size,
-                        "mean_size": round(mean, 2),
-                        "z_score": round(z_score, 2),
-                        "sample_count": count,
-                    },
-                    rule_id="anomaly_request_size_v1",
-                ))
-            elif z_score > self.HIGH_Z_SCORE:
-                # Check if it's a sudden increase (potential data exfil attempt)
-                if size > mean * self._max_request_size_factor:
-                    results.append(self._create_result(
+                results.append(
+                    self._create_result(
                         detected=True,
-                        severity="medium",
-                        confidence=0.7,
+                        severity="high",
+                        confidence=0.8,
                         source="behavioral",
-                        description=f"Unusually large request detected ({size} bytes)",
+                        description=f"Extremely large request detected ({size} bytes, z={z_score:.1f})",
                         evidence={
                             "request_size": size,
                             "mean_size": round(mean, 2),
-                            "increase_factor": round(size / mean, 2),
+                            "z_score": round(z_score, 2),
+                            "sample_count": count,
                         },
                         rule_id="anomaly_request_size_v1",
-                    ))
+                    )
+                )
+            elif z_score > self.HIGH_Z_SCORE:
+                # Check if it's a sudden increase (potential data exfil attempt)
+                if size > mean * self._max_request_size_factor:
+                    results.append(
+                        self._create_result(
+                            detected=True,
+                            severity="medium",
+                            confidence=0.7,
+                            source="behavioral",
+                            description=f"Unusually large request detected ({size} bytes)",
+                            evidence={
+                                "request_size": size,
+                                "mean_size": round(mean, 2),
+                                "increase_factor": round(size / mean, 2),
+                            },
+                            rule_id="anomaly_request_size_v1",
+                        )
+                    )
 
         return results
 
-    def _check_response_size(
-        self, metrics: AgentMetrics, size: int
-    ) -> list[DetectionResult]:
+    def _check_response_size(self, metrics: AgentMetrics, size: int) -> list[DetectionResult]:
         """Check for response size anomalies."""
         results = []
 
@@ -292,25 +294,25 @@ class AnomalyDetector(SyncDetector):
             z_score = abs((size - mean) / stddev)
 
             if z_score > self.CRITICAL_Z_SCORE:
-                results.append(self._create_result(
-                    detected=True,
-                    severity="medium",
-                    confidence=0.6,
-                    source="behavioral",
-                    description=f"Unusually large response detected ({size} bytes)",
-                    evidence={
-                        "response_size": size,
-                        "mean_size": round(mean, 2),
-                        "z_score": round(z_score, 2),
-                    },
-                    rule_id="anomaly_response_size_v1",
-                ))
+                results.append(
+                    self._create_result(
+                        detected=True,
+                        severity="medium",
+                        confidence=0.6,
+                        source="behavioral",
+                        description=f"Unusually large response detected ({size} bytes)",
+                        evidence={
+                            "response_size": size,
+                            "mean_size": round(mean, 2),
+                            "z_score": round(z_score, 2),
+                        },
+                        rule_id="anomaly_response_size_v1",
+                    )
+                )
 
         return results
 
-    def _check_input_tokens(
-        self, metrics: AgentMetrics, tokens: int
-    ) -> list[DetectionResult]:
+    def _check_input_tokens(self, metrics: AgentMetrics, tokens: int) -> list[DetectionResult]:
         """Check for input token anomalies."""
         results = []
 
@@ -327,25 +329,25 @@ class AnomalyDetector(SyncDetector):
             # - Context poisoning
             # - Data exfiltration via system prompt
             if factor > self._max_token_increase_factor:
-                results.append(self._create_result(
-                    detected=True,
-                    severity="high",
-                    confidence=0.75,
-                    source="behavioral",
-                    description=f"Sudden increase in input tokens ({tokens} vs avg {mean:.0f})",
-                    evidence={
-                        "input_tokens": tokens,
-                        "mean_tokens": round(mean, 2),
-                        "increase_factor": round(factor, 2),
-                    },
-                    rule_id="anomaly_input_tokens_v1",
-                ))
+                results.append(
+                    self._create_result(
+                        detected=True,
+                        severity="high",
+                        confidence=0.75,
+                        source="behavioral",
+                        description=f"Sudden increase in input tokens ({tokens} vs avg {mean:.0f})",
+                        evidence={
+                            "input_tokens": tokens,
+                            "mean_tokens": round(mean, 2),
+                            "increase_factor": round(factor, 2),
+                        },
+                        rule_id="anomaly_input_tokens_v1",
+                    )
+                )
 
         return results
 
-    def _check_output_tokens(
-        self, metrics: AgentMetrics, tokens: int
-    ) -> list[DetectionResult]:
+    def _check_output_tokens(self, metrics: AgentMetrics, tokens: int) -> list[DetectionResult]:
         """Check for output token anomalies."""
         results = []
 
@@ -359,19 +361,21 @@ class AnomalyDetector(SyncDetector):
 
             # Large output could indicate data extraction
             if factor > self._max_token_increase_factor:
-                results.append(self._create_result(
-                    detected=True,
-                    severity="medium",
-                    confidence=0.65,
-                    source="behavioral",
-                    description=f"Sudden increase in output tokens ({tokens} vs avg {mean:.0f})",
-                    evidence={
-                        "output_tokens": tokens,
-                        "mean_tokens": round(mean, 2),
-                        "increase_factor": round(factor, 2),
-                    },
-                    rule_id="anomaly_output_tokens_v1",
-                ))
+                results.append(
+                    self._create_result(
+                        detected=True,
+                        severity="medium",
+                        confidence=0.65,
+                        source="behavioral",
+                        description=f"Sudden increase in output tokens ({tokens} vs avg {mean:.0f})",
+                        evidence={
+                            "output_tokens": tokens,
+                            "mean_tokens": round(mean, 2),
+                            "increase_factor": round(factor, 2),
+                        },
+                        rule_id="anomaly_output_tokens_v1",
+                    )
+                )
 
         return results
 
@@ -398,19 +402,21 @@ class AnomalyDetector(SyncDetector):
 
             # High entropy with many models is unusual
             if entropy > 2.0 and model_count > 5:
-                results.append(self._create_result(
-                    detected=True,
-                    severity="low",
-                    confidence=0.5,
-                    source="behavioral",
-                    description=f"Unusual model switching pattern detected",
-                    evidence={
-                        "model_count": model_count,
-                        "models_used": dict(metrics.models_used),
-                        "entropy": round(entropy, 2),
-                    },
-                    rule_id="anomaly_model_switch_v1",
-                ))
+                results.append(
+                    self._create_result(
+                        detected=True,
+                        severity="low",
+                        confidence=0.5,
+                        source="behavioral",
+                        description="Unusual model switching pattern detected",
+                        evidence={
+                            "model_count": model_count,
+                            "models_used": dict(metrics.models_used),
+                            "entropy": round(entropy, 2),
+                        },
+                        rule_id="anomaly_model_switch_v1",
+                    )
+                )
 
         return results
 

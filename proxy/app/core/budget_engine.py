@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.budget import Budget, BudgetAction, BudgetPeriod, BudgetScope
@@ -86,7 +86,9 @@ class BudgetEngine:
                     )
 
             # Check warning threshold
-            projected_percent = float((budget.current_spend_usd + estimated_cost) / budget.limit_usd * 100)
+            projected_percent = float(
+                (budget.current_spend_usd + estimated_cost) / budget.limit_usd * 100
+            )
             if projected_percent >= budget.warning_threshold_percent:
                 return BudgetDecision(
                     action="warn",
@@ -213,9 +215,7 @@ class BudgetEngine:
         now = datetime.utcnow()
 
         if period == BudgetPeriod.DAILY:
-            return (now + timedelta(days=1)).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         elif period == BudgetPeriod.WEEKLY:
             days_until_monday = (7 - now.weekday()) % 7
             return (now + timedelta(days=days_until_monday)).replace(

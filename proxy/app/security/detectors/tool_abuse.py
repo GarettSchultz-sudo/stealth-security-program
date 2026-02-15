@@ -26,45 +26,38 @@ class ToolAbuseDetector(SyncDetector):
         (r"\bmkfs\b", "format_disk", "critical"),
         (r"\bdd\s+.*of=/dev/", "dd_to_device", "critical"),
         (r"\bshred\b", "shred_command", "high"),
-
         # Remote code execution
         (r"curl\s+.*\|\s*(bash|sh|zsh)", "curl_pipe_shell", "critical"),
         (r"wget\s+.*\|\s*(bash|sh|zsh)", "wget_pipe_shell", "critical"),
         (r"curl\s+.*>\s*.*/(bash|sh|zsh)", "download_script", "high"),
         (r"eval\s+['\"]", "eval_usage", "medium"),
-
         # Privilege escalation
         (r"\bsudo\s+", "sudo_usage", "medium"),
         (r"\bsu\s+", "su_usage", "medium"),
         (r"\bdoas\s+", "doas_usage", "medium"),
         (r"chmod\s+[0-7]*777", "chmod_777", "high"),
         (r"chown\s+.*root", "chown_root", "high"),
-
         # Network reconnaissance
         (r"\bnmap\s+", "nmap_scan", "high"),
         (r"\bnetcat\s+|nc\s+", "netcat_usage", "high"),
         (r"\bnikto\s+", "nikto_scan", "high"),
         (r"\bsqlmap\s+", "sqlmap_usage", "critical"),
-
         # Credential access
         (r"cat\s+.*/(passwd|shadow|sudoers)", "credential_file_access", "critical"),
         (r"/\.(ssh|gnupg)/", "ssh_key_access", "critical"),
         (r"\.pem\b", "pem_file_access", "high"),
         (r"\.key\b", "key_file_access", "high"),
         (r"(AWS|GCP|AZURE)_(ACCESS|SECRET|KEY)", "cloud_credential_access", "critical"),
-
         # System manipulation
         (r"\biptables\b", "iptables_modification", "high"),
         (r"\bsystemctl\s+(start|stop|restart|enable|disable)", "systemctl_usage", "medium"),
         (r"\bcrontab\b", "crontab_modification", "high"),
         (r"/etc/(hosts|resolv\.conf|hostname)", "system_config_access", "high"),
-
         # Data exfiltration vectors
         (r"\bscp\s+.*@", "scp_upload", "medium"),
         (r"\brsync\s+.*@", "rsync_upload", "medium"),
         (r"\bftp\s+", "ftp_usage", "medium"),
         (r"\btftp\s+", "tftp_usage", "high"),
-
         # Process manipulation
         (r"\bkill\s+(-9\s+)*1\b", "kill_init", "critical"),
         (r"\bkillall\s+", "killall_usage", "medium"),
@@ -175,7 +168,9 @@ class ToolAbuseDetector(SyncDetector):
 
         return results
 
-    def _check_dangerous_commands(self, text_content: list[tuple[str, str]]) -> list[DetectionResult]:
+    def _check_dangerous_commands(
+        self, text_content: list[tuple[str, str]]
+    ) -> list[DetectionResult]:
         """Check for dangerous command patterns."""
         results = []
         found_commands = []
@@ -184,13 +179,15 @@ class ToolAbuseDetector(SyncDetector):
             for pattern, cmd_type, severity in self._compiled_commands:
                 matches = pattern.findall(text)
                 if matches:
-                    found_commands.append({
-                        "type": cmd_type,
-                        "severity": severity,
-                        "location": location,
-                        "count": len(matches),
-                        "samples": str(matches[:3])[:100],  # Truncate
-                    })
+                    found_commands.append(
+                        {
+                            "type": cmd_type,
+                            "severity": severity,
+                            "location": location,
+                            "count": len(matches),
+                            "samples": str(matches[:3])[:100],  # Truncate
+                        }
+                    )
 
         if found_commands:
             severities = [c["severity"] for c in found_commands]
@@ -203,18 +200,20 @@ class ToolAbuseDetector(SyncDetector):
 
             confidence = min(0.9, 0.6 + len(found_commands) * 0.05)
 
-            results.append(self._create_result(
-                detected=True,
-                severity=overall_severity,
-                confidence=confidence,
-                source="signature",
-                description="Dangerous commands detected in request",
-                evidence={
-                    "commands": found_commands,
-                    "total_count": sum(c["count"] for c in found_commands),
-                },
-                rule_id="tool_command_v1",
-            ))
+            results.append(
+                self._create_result(
+                    detected=True,
+                    severity=overall_severity,
+                    confidence=confidence,
+                    source="signature",
+                    description="Dangerous commands detected in request",
+                    evidence={
+                        "commands": found_commands,
+                        "total_count": sum(c["count"] for c in found_commands),
+                    },
+                    rule_id="tool_command_v1",
+                )
+            )
 
         return results
 
@@ -227,28 +226,32 @@ class ToolAbuseDetector(SyncDetector):
             for pattern, path_type, severity in self._compiled_paths:
                 matches = pattern.findall(text)
                 if matches:
-                    found_paths.append({
-                        "type": path_type,
-                        "severity": severity,
-                        "location": location,
-                        "count": len(matches),
-                    })
+                    found_paths.append(
+                        {
+                            "type": path_type,
+                            "severity": severity,
+                            "location": location,
+                            "count": len(matches),
+                        }
+                    )
 
         if found_paths:
             severities = [p["severity"] for p in found_paths]
             overall_severity = "critical" if "critical" in severities else "high"
 
-            results.append(self._create_result(
-                detected=True,
-                severity=overall_severity,
-                confidence=0.85,
-                source="signature",
-                description="Sensitive file path access detected",
-                evidence={
-                    "paths": found_paths,
-                },
-                rule_id="tool_path_v1",
-            ))
+            results.append(
+                self._create_result(
+                    detected=True,
+                    severity=overall_severity,
+                    confidence=0.85,
+                    source="signature",
+                    description="Sensitive file path access detected",
+                    evidence={
+                        "paths": found_paths,
+                    },
+                    rule_id="tool_path_v1",
+                )
+            )
 
         return results
 
@@ -264,21 +267,25 @@ class ToolAbuseDetector(SyncDetector):
             # Check for dangerous tool names
             dangerous_tools = ["bash", "exec", "shell", "terminal", "cmd", "powershell"]
             if any(dt in tool_name for dt in dangerous_tools):
-                results.append(self._create_result(
-                    detected=True,
-                    severity="high",
-                    confidence=0.7,
-                    source="heuristic",
-                    description=f"Dangerous tool requested: {tool_name}",
-                    evidence={
-                        "tool_name": tool_name,
-                    },
-                    rule_id="tool_invocation_v1",
-                ))
+                results.append(
+                    self._create_result(
+                        detected=True,
+                        severity="high",
+                        confidence=0.7,
+                        source="heuristic",
+                        description=f"Dangerous tool requested: {tool_name}",
+                        evidence={
+                            "tool_name": tool_name,
+                        },
+                        rule_id="tool_invocation_v1",
+                    )
+                )
 
         return results
 
-    def _analyze_tool_use(self, tool_name: str, tool_input: dict[str, Any]) -> list[DetectionResult]:
+    def _analyze_tool_use(
+        self, tool_name: str, tool_input: dict[str, Any]
+    ) -> list[DetectionResult]:
         """Analyze a specific tool use block."""
         results = []
 

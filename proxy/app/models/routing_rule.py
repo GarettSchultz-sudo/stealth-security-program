@@ -1,11 +1,10 @@
 """Routing Rule model for smart model selection."""
 
-import enum
 import uuid
 
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModel
 
@@ -19,10 +18,14 @@ class RoutingRule(BaseModel):
 
     __tablename__ = "routing_rules"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)  # Lower = higher priority
+    priority: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=100
+    )  # Lower = higher priority
 
     # Condition for matching (JSON structure)
     # Examples:
@@ -32,7 +35,9 @@ class RoutingRule(BaseModel):
     condition: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     # Target configuration
-    target_provider: Mapped[str] = mapped_column(String(50), nullable=False)  # anthropic, openai, etc.
+    target_provider: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # anthropic, openai, etc.
     target_model: Mapped[str] = mapped_column(String(100), nullable=False)  # Model to route to
 
     # Fallback if target fails

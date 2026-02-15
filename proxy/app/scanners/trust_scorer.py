@@ -101,9 +101,7 @@ class TrustScoreCalculator:
         components.author_reputation = self._calculate_author_reputation(author_info)
 
         # Calculate community validation
-        components.community_validation = self._calculate_community_validation(
-            community_info
-        )
+        components.community_validation = self._calculate_community_validation(community_info)
 
         # Calculate code quality from manifest and findings
         components.code_quality = self._calculate_code_quality(findings, manifest)
@@ -131,7 +129,9 @@ class TrustScoreCalculator:
             "findings_by_severity": self._count_findings_by_severity(findings),
             "permissions_requested": manifest.get("permissions", []) if manifest else [],
             "has_verified_author": author_info.get("verified", False) if author_info else False,
-            "community_endorsements": community_info.get("endorsements", 0) if community_info else 0,
+            "community_endorsements": community_info.get("endorsements", 0)
+            if community_info
+            else 0,
         }
 
         return TrustScoreResult(
@@ -229,9 +229,7 @@ class TrustScoreCalculator:
 
         return max(0, min(100, score))
 
-    def _calculate_code_quality(
-        self, findings: list[dict], manifest: dict | None
-    ) -> int:
+    def _calculate_code_quality(self, findings: list[dict], manifest: dict | None) -> int:
         """Calculate code quality score."""
         score = 100
 
@@ -280,13 +278,13 @@ class TrustScoreCalculator:
             score += impact
 
         # Check network behavior
-        network_calls = behavior_data.get("network_calls", [])
+        behavior_data.get("network_calls", [])
         suspicious_domains = behavior_data.get("suspicious_domains", 0)
         if suspicious_domains > 0:
             score -= min(30, suspicious_domains * 10)
 
         # Check file system behavior
-        file_access = behavior_data.get("file_access", [])
+        behavior_data.get("file_access", [])
         sensitive_access = behavior_data.get("sensitive_file_access", 0)
         if sensitive_access > 0:
             score -= min(20, sensitive_access * 5)
@@ -304,9 +302,7 @@ class TrustScoreCalculator:
         else:
             return "critical"
 
-    def _determine_recommendation(
-        self, score: int, findings: list[dict]
-    ) -> str:
+    def _determine_recommendation(self, score: int, findings: list[dict]) -> str:
         """Determine installation recommendation."""
         # Check for critical findings
         has_critical = any(

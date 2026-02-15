@@ -6,13 +6,14 @@ Supports graceful termination and context preservation for model switching.
 """
 
 import asyncio
-import hashlib
+import contextlib
 import os
 import time
+from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from typing import Any
 
 import httpx
 
@@ -37,7 +38,7 @@ class StreamContext:
     budget_id: str
     model: str
     provider: str
-    messages: List[Dict[str, Any]] = field(default_factory=list)
+    messages: list[dict[str, Any]] = field(default_factory=list)
     accumulated_content: str = ""
     total_tokens: int = 0
     cost_so_far: float = 0.0
@@ -56,7 +57,7 @@ class BudgetCheckResult:
     limit: float
     percent_used: float
     recommended_action: str  # "continue", "downgrade", "block"
-    recommended_model: Optional[str] = None
+    recommended_model: str | None = None
     estimated_remaining: float = 0.0
 
 
@@ -72,7 +73,7 @@ class StreamingInterceptor:
     """
 
     def __init__(self):
-        self.active_streams: Dict[str, StreamContext] = {}
+        self.active_streams: dict[str, StreamContext] = {}
         self._http_client = httpx.AsyncClient()
 
     async def check_budget(self, user_id: str, budget_id: str) -> BudgetCheckResult:
@@ -187,7 +188,7 @@ class StreamingInterceptor:
         budget_id: str,
         model: str,
         provider: str,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
     ) -> StreamContext:
         """Register a new streaming request"""
         context = StreamContext(
@@ -201,7 +202,7 @@ class StreamingInterceptor:
         self.active_streams[session_id] = context
         return context
 
-    def get_stream_context(self, session_id: str) -> Optional[StreamContext]:
+    def get_stream_context(self, session_id: str) -> StreamContext | None:
         """Get context for an active stream"""
         return self.active_streams.get(session_id)
 
@@ -209,7 +210,7 @@ class StreamingInterceptor:
         self,
         session_id: str,
         stream_generator: AsyncGenerator[bytes, None],
-        on_budget_exceeded: Optional[Callable[[StreamContext], None]] = None,
+        on_budget_exceeded: Callable[[StreamContext], None] | None = None,
         check_interval: int = 10,  # Check budget every N chunks
     ) -> AsyncGenerator[bytes, None]:
         """
@@ -236,9 +237,7 @@ class StreamingInterceptor:
 
                 # Check budget periodically
                 if chunk_count > 0 and chunk_count % check_interval == 0:
-                    budget_check = await self.check_budget(
-                        context.user_id, context.budget_id
-                    )
+                    budget_check = await self.check_budget(context.user_id, context.budget_id)
 
                     if not budget_check.allowed:
                         context.state = StreamState.TERMINATED
@@ -251,10 +250,8 @@ class StreamingInterceptor:
                         pass
 
                 # Accumulate content for context preservation
-                try:
+                with contextlib.suppress(BaseException):
                     context.accumulated_content += chunk.decode("utf-8")
-                except:
-                    pass
 
                 yield chunk
                 chunk_count += 1
@@ -287,16 +284,14 @@ class StreamingInterceptor:
 
             context.state = StreamState.COMPLETED
 
-    def terminate_stream(self, session_id: str) -> Optional[StreamContext]:
+    def terminate_stream(self, session_id: str) -> StreamContext | None:
         """Terminate an active stream"""
         context = self.active_streams.get(session_id)
         if context:
             context.state = StreamState.TERMINATED
         return context
 
-    def get_messages_for_continuation(
-        self, session_id: str
-    ) -> Optional[List[Dict[str, Any]]]:
+    def get_messages_for_continuation(self, session_id: str) -> list[dict[str, Any]] | None:
         """
         Get messages for continuing a conversation with a different model.
 
@@ -310,15 +305,11 @@ class StreamingInterceptor:
 
         # Add accumulated assistant response if any
         if context.accumulated_content:
-            messages.append(
-                {"role": "assistant", "content": context.accumulated_content}
-            )
+            messages.append({"role": "assistant", "content": context.accumulated_content})
 
         return messages
 
-    def _estimate_cost(
-        self, model: str, prompt_chars: int, completion_tokens: int
-    ) -> float:
+    def _estimate_cost(self, model: str, prompt_chars: int, completion_tokens: int) -> float:
         """Estimate cost based on model and token counts"""
         # Simplified cost estimation
         cost_per_1k_tokens = {
@@ -344,7 +335,7 @@ class StreamingInterceptor:
 
 
 # Singleton instance
-_interceptor: Optional[StreamingInterceptor] = None
+_interceptor: StreamingInterceptor | None = None
 
 
 def get_streaming_interceptor() -> StreamingInterceptor:

@@ -7,7 +7,6 @@ Last updated: February 2026
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Literal
 
 
 @dataclass
@@ -274,8 +273,7 @@ def get_pricing(model: str) -> ModelPricing | None:
 def get_all_models_by_provider(provider: str) -> list[str]:
     """Get all models for a given provider."""
     return [
-        model for model, pricing in PRICING_TABLE.items()
-        if pricing.provider == provider.lower()
+        model for model, pricing in PRICING_TABLE.items() if pricing.provider == provider.lower()
     ]
 
 

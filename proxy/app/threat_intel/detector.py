@@ -4,7 +4,6 @@ Threat Intelligence Detector
 Uses threat intelligence feeds to detect malicious IOCs in requests.
 """
 
-import asyncio
 import logging
 import re
 from typing import Any
@@ -39,22 +38,18 @@ class ThreatIntelDetector(AsyncDetector):
 
     # Patterns for extracting IOCs from text
     IP_PATTERN = re.compile(
-        r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}'
-        r'(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b'
+        r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
+        r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"
     )
 
     DOMAIN_PATTERN = re.compile(
-        r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.){1,}'
-        r'[a-zA-Z]{2,}\b'
+        r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.){1,}"
+        r"[a-zA-Z]{2,}\b"
     )
 
-    URL_PATTERN = re.compile(
-        r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[/\w .-]*/?'
-    )
+    URL_PATTERN = re.compile(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[/\w .-]*/?")
 
-    SHA256_PATTERN = re.compile(
-        r'\b[a-fA-F0-9]{64}\b'
-    )
+    SHA256_PATTERN = re.compile(r"\b[a-fA-F0-9]{64}\b")
 
     def __init__(self, intel_manager: ThreatIntelManager | None = None):
         super().__init__(
@@ -101,34 +96,38 @@ class ThreatIntelDetector(AsyncDetector):
 
                 for intel in intel_results:
                     if intel.severity == ThreatSeverity.MALICIOUS:
-                        results.append(self._create_result(
-                            detected=True,
-                            severity="high",
-                            confidence=intel.confidence,
-                            source=DetectionSource.EXTERNAL.value,
-                            description=f"Malicious {ioc_type.value} detected: {self._redact_ioc(value)}",
-                            evidence={
-                                "ioc_type": ioc_type.value,
-                                "ioc_value_hash": self._hash_value(value),
-                                "sources": intel.sources,
-                                "threat_types": intel.threat_types,
-                            },
-                            rule_id="threat_intel_malicious_v1",
-                        ))
+                        results.append(
+                            self._create_result(
+                                detected=True,
+                                severity="high",
+                                confidence=intel.confidence,
+                                source=DetectionSource.EXTERNAL.value,
+                                description=f"Malicious {ioc_type.value} detected: {self._redact_ioc(value)}",
+                                evidence={
+                                    "ioc_type": ioc_type.value,
+                                    "ioc_value_hash": self._hash_value(value),
+                                    "sources": intel.sources,
+                                    "threat_types": intel.threat_types,
+                                },
+                                rule_id="threat_intel_malicious_v1",
+                            )
+                        )
                     elif intel.severity == ThreatSeverity.SUSPICIOUS:
-                        results.append(self._create_result(
-                            detected=True,
-                            severity="medium",
-                            confidence=intel.confidence,
-                            source=DetectionSource.EXTERNAL.value,
-                            description=f"Suspicious {ioc_type.value} detected",
-                            evidence={
-                                "ioc_type": ioc_type.value,
-                                "ioc_value_hash": self._hash_value(value),
-                                "sources": intel.sources,
-                            },
-                            rule_id="threat_intel_suspicious_v1",
-                        ))
+                        results.append(
+                            self._create_result(
+                                detected=True,
+                                severity="medium",
+                                confidence=intel.confidence,
+                                source=DetectionSource.EXTERNAL.value,
+                                description=f"Suspicious {ioc_type.value} detected",
+                                evidence={
+                                    "ioc_type": ioc_type.value,
+                                    "ioc_value_hash": self._hash_value(value),
+                                    "sources": intel.sources,
+                                },
+                                rule_id="threat_intel_suspicious_v1",
+                            )
+                        )
 
             except Exception as e:
                 logger.error(f"Threat intel lookup error: {e}")
@@ -157,19 +156,21 @@ class ThreatIntelDetector(AsyncDetector):
 
                 for intel in intel_results:
                     if intel.severity == ThreatSeverity.MALICIOUS:
-                        results.append(self._create_result(
-                            detected=True,
-                            severity="critical",
-                            confidence=intel.confidence,
-                            source=DetectionSource.EXTERNAL.value,
-                            description=f"C2/malicious infrastructure in response",
-                            evidence={
-                                "ioc_type": ioc_type.value,
-                                "ioc_value_hash": self._hash_value(value),
-                                "sources": intel.sources,
-                            },
-                            rule_id="threat_intel_c2_v1",
-                        ))
+                        results.append(
+                            self._create_result(
+                                detected=True,
+                                severity="critical",
+                                confidence=intel.confidence,
+                                source=DetectionSource.EXTERNAL.value,
+                                description="C2/malicious infrastructure in response",
+                                evidence={
+                                    "ioc_type": ioc_type.value,
+                                    "ioc_value_hash": self._hash_value(value),
+                                    "sources": intel.sources,
+                                },
+                                rule_id="threat_intel_c2_v1",
+                            )
+                        )
 
             except Exception as e:
                 logger.error(f"Threat intel lookup error: {e}")
@@ -241,17 +242,20 @@ class ThreatIntelDetector(AsyncDetector):
         if parts[0] == 192 and parts[1] == 168:
             return True
         # 127.x.x.x (localhost)
-        if parts[0] == 127:
-            return True
-        return False
+        return parts[0] == 127
 
     def _is_safe_domain(self, domain: str) -> bool:
         """Check if domain is known safe."""
-        safe_tlds = [".gov", ".edu", ".mil"]
         safe_domains = [
-            "google.com", "microsoft.com", "amazon.com", "apple.com",
-            "github.com", "stackoverflow.com", "wikipedia.org",
-            "anthropic.com", "openai.com",
+            "google.com",
+            "microsoft.com",
+            "amazon.com",
+            "apple.com",
+            "github.com",
+            "stackoverflow.com",
+            "wikipedia.org",
+            "anthropic.com",
+            "openai.com",
         ]
 
         domain_lower = domain.lower()
@@ -270,10 +274,7 @@ class ThreatIntelDetector(AsyncDetector):
             "https://stackoverflow.com/",
             "https://developer.mozilla.org/",
         ]
-        for prefix in safe_prefixes:
-            if url_lower.startswith(prefix):
-                return True
-        return False
+        return any(url_lower.startswith(prefix) for prefix in safe_prefixes)
 
     def _redact_ioc(self, value: str) -> str:
         """Redact IOC for logging."""
@@ -284,4 +285,5 @@ class ThreatIntelDetector(AsyncDetector):
     def _hash_value(self, value: str) -> str:
         """Hash IOC value for evidence."""
         import hashlib
+
         return hashlib.sha256(value.encode()).hexdigest()[:16]

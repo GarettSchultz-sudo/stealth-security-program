@@ -1,10 +1,12 @@
 """Alert model for notifications."""
 
+from __future__ import annotations
+
 import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Enum, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,16 +37,24 @@ class Alert(BaseModel):
 
     __tablename__ = "alerts"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
-    budget_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("budgets.id"), nullable=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    budget_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id"), nullable=True
+    )
 
     # Alert configuration
     type: Mapped[AlertType] = mapped_column(Enum(AlertType), nullable=False)
     threshold_percent: Mapped[int] = mapped_column(default=80)  # Trigger at this percentage
 
     # Delivery configuration
-    delivery: Mapped[AlertDelivery] = mapped_column(Enum(AlertDelivery), default=AlertDelivery.EMAIL, nullable=False)
-    delivery_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # webhook_url, email, etc.
+    delivery: Mapped[AlertDelivery] = mapped_column(
+        Enum(AlertDelivery), default=AlertDelivery.EMAIL, nullable=False
+    )
+    delivery_config: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True
+    )  # webhook_url, email, etc.
 
     # Status tracking
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
@@ -52,7 +62,9 @@ class Alert(BaseModel):
     trigger_count: Mapped[int] = mapped_column(default=0, nullable=False)
 
     # Cooldown to prevent spam
-    cooldown_minutes: Mapped[int] = mapped_column(default=60, nullable=False)  # Min time between triggers
+    cooldown_minutes: Mapped[int] = mapped_column(
+        default=60, nullable=False
+    )  # Min time between triggers
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="alerts")

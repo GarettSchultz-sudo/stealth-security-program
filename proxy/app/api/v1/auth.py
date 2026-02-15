@@ -2,7 +2,6 @@
 
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from passlib.context import CryptContext
@@ -24,7 +23,7 @@ class UserRegister(BaseModel):
 
     email: EmailStr
     password: str
-    org_name: Optional[str] = None
+    org_name: str | None = None
 
 
 class UserLogin(BaseModel):
@@ -48,7 +47,7 @@ class UserResponse(BaseModel):
 
     id: str
     email: str
-    org_name: Optional[str]
+    org_name: str | None
     plan: str
     is_active: bool
 
@@ -66,7 +65,7 @@ class ApiKeyResponse(BaseModel):
     name: str
     key_prefix: str
     is_active: bool
-    last_used: Optional[str]
+    last_used: str | None
     created_at: str
 
 
@@ -162,7 +161,9 @@ async def refresh_token(
     from jose import JWTError, jwt
 
     try:
-        payload = jwt.decode(refresh_token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(
+            refresh_token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+        )
         if payload.get("type") != "refresh":
             raise HTTPException(status_code=401, detail="Invalid token type")
 

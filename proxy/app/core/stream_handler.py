@@ -5,7 +5,6 @@ Captures token usage from streaming responses for accurate cost tracking.
 """
 
 import json
-from typing import Any
 
 
 class StreamHandler:
@@ -103,7 +102,9 @@ class StreamHandler:
             }
         return None
 
-    async def process_stream_chunk(self, provider: str, raw_line: str) -> tuple[str | None, dict | None]:
+    async def process_stream_chunk(
+        self, provider: str, raw_line: str
+    ) -> tuple[str | None, dict | None]:
         """
         Process a raw SSE line.
 

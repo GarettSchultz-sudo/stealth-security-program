@@ -1,8 +1,7 @@
 """Analytics API endpoints."""
 
 from datetime import datetime, timedelta
-from decimal import Decimal
-from typing import Annotated, Any
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel

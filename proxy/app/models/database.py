@@ -1,6 +1,6 @@
 """Database connection and session management."""
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -37,6 +37,7 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         # Import all models to ensure they're registered
         from app.models.base import Base  # noqa: F401
+
         # Tables will be created via Alembic migrations in production
         # For development/testing, we can create them directly
         if settings.is_development:

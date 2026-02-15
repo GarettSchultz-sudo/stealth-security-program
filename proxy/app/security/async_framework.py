@@ -9,19 +9,18 @@ Provides infrastructure for background detection tasks that can:
 """
 
 import asyncio
+import contextlib
 import logging
+import uuid
 from abc import abstractmethod
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Coroutine
-import uuid
+from typing import Any
 
 from app.security.detectors.base import BaseDetector
 from app.security.models import (
     DetectionResult,
-    DetectionSource,
-    ResponseAction,
-    SecurityEvent,
     SeverityLevel,
     ThreatType,
 )
@@ -32,6 +31,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AsyncDetectionTask:
     """Represents a pending or completed async detection task."""
+
     task_id: str
     detector_name: str
     request_id: str | None = None
@@ -46,6 +46,7 @@ class AsyncDetectionTask:
 @dataclass
 class StreamKillRequest:
     """Request to kill an active stream."""
+
     stream_id: str
     agent_id: str
     reason: str
@@ -148,7 +149,7 @@ class AsyncDetectorManager:
             if self._result_callback:
                 await self._result_callback(task)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             task.status = "timeout"
             task.error = f"Detection timed out after {self._timeout}s"
             logger.warning(f"Async detection timeout: {detector.name}")
@@ -179,8 +180,8 @@ class AsyncDetectorManager:
 
             # Check kill conditions
             should_kill = (
-                result.severity in [SeverityLevel.CRITICAL, SeverityLevel.HIGH] and
-                result.confidence >= detector.kill_confidence_threshold
+                result.severity in [SeverityLevel.CRITICAL, SeverityLevel.HIGH]
+                and result.confidence >= detector.kill_confidence_threshold
             )
 
             if should_kill:
@@ -241,13 +242,11 @@ class AsyncDetectorManager:
         if task_id not in self._active_tasks:
             return self._tasks.get(task_id)
 
-        try:
+        with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(
                 self._active_tasks[task_id],
                 timeout=timeout,
             )
-        except asyncio.TimeoutError:
-            pass
 
         return self._tasks.get(task_id)
 
@@ -301,9 +300,7 @@ class AsyncDetectionBase(BaseDetector):
         super().__init__(name, threat_type, priority)
         self._progress_callback: Callable[[float], Coroutine] | None = None
 
-    def set_progress_callback(
-        self, callback: Callable[[float], Coroutine]
-    ) -> None:
+    def set_progress_callback(self, callback: Callable[[float], Coroutine]) -> None:
         """Set callback for progress updates (0.0 to 1.0)."""
         self._progress_callback = callback
 
@@ -370,9 +367,7 @@ class BackgroundAnalysisDetector(AsyncDetectionBase):
         )
         self._analysis_functions: list[Callable] = []
 
-    def register_analysis(
-        self, func: Callable[[dict, dict], Coroutine]
-    ) -> None:
+    def register_analysis(self, func: Callable[[dict, dict], Coroutine]) -> None:
         """Register an async analysis function."""
         self._analysis_functions.append(func)
 

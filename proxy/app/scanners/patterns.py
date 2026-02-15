@@ -41,7 +41,9 @@ MALICIOUS_PATTERNS = [
         "description": "AWS access key ID detected in code",
         "remediation": "Remove AWS access key and use IAM roles or environment variables",
         "cwe": "CWE-798",
-        "references": ["https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html"],
+        "references": [
+            "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html"
+        ],
     },
     {
         "name": "AWS Secret Key",
@@ -207,9 +209,7 @@ class MaliciousPatternDetector:
         if custom_patterns:
             self.patterns.extend(custom_patterns)
 
-    def scan_content(
-        self, content: str, file_path: str | None = None
-    ) -> list[DetectedPattern]:
+    def scan_content(self, content: str, file_path: str | None = None) -> list[DetectedPattern]:
         """Scan content for malicious patterns.
 
         Args:
@@ -220,7 +220,7 @@ class MaliciousPatternDetector:
             List of detected patterns
         """
         findings: list[DetectedPattern] = []
-        lines = content.split("\n")
+        content.split("\n")
 
         for pattern_info in self.patterns:
             try:
@@ -339,9 +339,7 @@ class MaliciousPatternDetector:
 
         return findings
 
-    def _is_false_positive(
-        self, match: str, content: str, file_path: str | None
-    ) -> bool:
+    def _is_false_positive(self, match: str, content: str, file_path: str | None) -> bool:
         """Check if a match is likely a false positive."""
         # Common false positive indicators
         false_positive_indicators = [
@@ -372,10 +370,7 @@ class MaliciousPatternDetector:
         # Check file path for test/mock indicators
         if file_path:
             file_lower = file_path.lower()
-            if any(
-                x in file_lower
-                for x in ["test", "mock", "example", "sample", "fixture"]
-            ):
+            if any(x in file_lower for x in ["test", "mock", "example", "sample", "fixture"]):
                 return True
 
         return False

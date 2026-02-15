@@ -2,7 +2,6 @@
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -20,17 +19,17 @@ class AgentCreate(BaseModel):
 
     name: str
     agent_type: AgentType = AgentType.CUSTOM
-    description: Optional[str] = None
-    metadata: Optional[dict] = None
+    description: str | None = None
+    metadata: dict | None = None
 
 
 class AgentUpdate(BaseModel):
     """Agent update request."""
 
-    name: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[AgentStatus] = None
-    metadata: Optional[dict] = None
+    name: str | None = None
+    description: str | None = None
+    status: AgentStatus | None = None
+    metadata: dict | None = None
 
 
 class AgentResponse(BaseModel):
@@ -40,9 +39,9 @@ class AgentResponse(BaseModel):
     name: str
     agent_type: str
     agent_identifier: str
-    description: Optional[str]
+    description: str | None
     status: str
-    last_seen: Optional[str]
+    last_seen: str | None
     created_at: str
 
 
@@ -99,9 +98,7 @@ async def list_agents(
 ) -> list[AgentResponse]:
     """List all agents for the current user."""
     result = await db.execute(
-        select(Agent)
-        .where(Agent.user_id == uuid.UUID(user_id))
-        .order_by(Agent.last_seen.desc())
+        select(Agent).where(Agent.user_id == uuid.UUID(user_id)).order_by(Agent.last_seen.desc())
     )
     agents = result.scalars().all()
 
@@ -178,7 +175,7 @@ async def update_agent(
     update_data = agent_data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         if key == "metadata":
-            setattr(agent, "metadata_", value)
+            agent.metadata_ = value
         else:
             setattr(agent, key, value)
 

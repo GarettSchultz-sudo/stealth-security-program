@@ -11,8 +11,6 @@ Creates decoy endpoints and patterns to:
 import asyncio
 import hashlib
 import logging
-import random
-import string
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -24,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class HoneypotEndpoint:
     """A honeypot endpoint configuration."""
+
     path: str
     method: str
     response_type: str  # "fake_data", "slow", "error", "redirect"
@@ -36,6 +35,7 @@ class HoneypotEndpoint:
 @dataclass
 class AttackerProfile:
     """Profile of an attacker based on their behavior."""
+
     attacker_id: str
     ip_address: str | None = None
     user_agent: str | None = None
@@ -137,7 +137,7 @@ class HoneypotRegistry:
                 response_type="fake_data",
                 response_data={
                     "[core]": {"repositoryformatversion": "0"},
-                    "[remote \"origin\"]": {"url": "https://github.com/fake/repo.git"},
+                    '[remote "origin"]': {"url": "https://github.com/fake/repo.git"},
                 },
                 trap_keywords=["git", "repository"],
             ),
@@ -306,10 +306,7 @@ class AttackerTracker:
         """Remove old profiles."""
         cutoff = datetime.utcnow() - timedelta(days=7)
 
-        to_remove = [
-            aid for aid, profile in self._profiles.items()
-            if profile.last_seen < cutoff
-        ]
+        to_remove = [aid for aid, profile in self._profiles.items() if profile.last_seen < cutoff]
 
         for aid in to_remove:
             del self._profiles[aid]
@@ -318,10 +315,7 @@ class AttackerTracker:
 
     def get_high_threat_attackers(self) -> list[AttackerProfile]:
         """Get attackers with high threat level."""
-        return [
-            p for p in self._profiles.values()
-            if p.threat_level in ["high", "critical"]
-        ]
+        return [p for p in self._profiles.values() if p.threat_level in ["high", "critical"]]
 
     def get_stats(self) -> dict[str, Any]:
         """Get tracking statistics."""

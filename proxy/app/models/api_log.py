@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Numeric, SmallInteger, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModel
 
@@ -22,20 +22,36 @@ class ApiLog(BaseModel):
     __tablename__ = "api_logs"
 
     # Request identification
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
-    agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("agents.id"), nullable=True, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id"), nullable=True, index=True
+    )
 
     # Timestamp (indexed for time-based queries)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()", nullable=False, index=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default="now()", nullable=False, index=True
+    )
 
     # Provider and model info
-    provider: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # anthropic, openai, google, etc.
-    model: Mapped[str] = mapped_column(String(100), nullable=False, index=True)  # claude-sonnet-4-20250514, gpt-4o, etc.
-    endpoint: Mapped[str] = mapped_column(String(255), nullable=False)  # /v1/messages, /v1/chat/completions
+    provider: Mapped[str] = mapped_column(
+        String(50), nullable=False, index=True
+    )  # anthropic, openai, google, etc.
+    model: Mapped[str] = mapped_column(
+        String(100), nullable=False, index=True
+    )  # claude-sonnet-4-20250514, gpt-4o, etc.
+    endpoint: Mapped[str] = mapped_column(
+        String(255), nullable=False
+    )  # /v1/messages, /v1/chat/completions
 
     # Token usage
-    request_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)  # Input tokens
-    response_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)  # Output tokens
+    request_tokens: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0
+    )  # Input tokens
+    response_tokens: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0
+    )  # Output tokens
     total_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
     # Prompt caching tokens (Anthropic-specific)
@@ -59,8 +75,12 @@ class ApiLog(BaseModel):
     is_streaming: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     # Routing decision (if smart routing was applied)
-    original_model: Mapped[str | None] = mapped_column(String(100), nullable=True)  # What was requested
-    routed_to_model: Mapped[str | None] = mapped_column(String(100), nullable=True)  # What was actually used
+    original_model: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )  # What was requested
+    routed_to_model: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )  # What was actually used
 
     # Composite indexes for common query patterns
     __table_args__ = (

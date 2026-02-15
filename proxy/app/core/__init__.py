@@ -8,9 +8,9 @@ from app.core.smart_router import RoutingDecision, SmartRouter
 from app.core.stream_handler import StreamHandler
 from app.core.token_counter import (
     count_tokens_anthropic,
+    count_tokens_from_text,
     count_tokens_google,
     count_tokens_openai,
-    count_tokens_from_text,
     extract_usage_from_response,
 )
 

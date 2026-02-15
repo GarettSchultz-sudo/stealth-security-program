@@ -1,7 +1,6 @@
 """Smart routing configuration API endpoints."""
 
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -19,27 +18,27 @@ class RoutingRuleCreate(BaseModel):
     """Routing rule creation request."""
 
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     priority: int = 100
     condition: dict
     target_provider: str
     target_model: str
-    fallback_provider: Optional[str] = None
-    fallback_model: Optional[str] = None
+    fallback_provider: str | None = None
+    fallback_model: str | None = None
 
 
 class RoutingRuleUpdate(BaseModel):
     """Routing rule update request."""
 
-    name: Optional[str] = None
-    description: Optional[str] = None
-    priority: Optional[int] = None
-    condition: Optional[dict] = None
-    target_provider: Optional[str] = None
-    target_model: Optional[str] = None
-    fallback_provider: Optional[str] = None
-    fallback_model: Optional[str] = None
-    is_active: Optional[bool] = None
+    name: str | None = None
+    description: str | None = None
+    priority: int | None = None
+    condition: dict | None = None
+    target_provider: str | None = None
+    target_model: str | None = None
+    fallback_provider: str | None = None
+    fallback_model: str | None = None
+    is_active: bool | None = None
 
 
 class RoutingRuleResponse(BaseModel):
@@ -47,13 +46,13 @@ class RoutingRuleResponse(BaseModel):
 
     id: str
     name: str
-    description: Optional[str]
+    description: str | None
     priority: int
     condition: dict
     target_provider: str
     target_model: str
-    fallback_provider: Optional[str]
-    fallback_model: Optional[str]
+    fallback_provider: str | None
+    fallback_model: str | None
     is_active: bool
     times_applied: int
     estimated_savings_usd: float
@@ -65,7 +64,7 @@ class RoutingSimulateRequest(BaseModel):
 
     requested_model: str
     messages: list[dict]
-    metadata: Optional[dict] = None
+    metadata: dict | None = None
 
 
 @router.post("/rules", response_model=RoutingRuleResponse)

@@ -13,8 +13,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Callable
-import uuid
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TenantConfig:
     """Configuration for a tenant (organization)."""
+
     org_id: str
     name: str
     tier: str = "standard"  # free, standard, enterprise
@@ -53,6 +53,7 @@ class TenantConfig:
 @dataclass
 class TenantUsage:
     """Current usage for a tenant."""
+
     org_id: str
 
     # Request counts
@@ -73,13 +74,22 @@ class TenantUsage:
     def is_within_limits(self, config: TenantConfig) -> tuple[bool, str | None]:
         """Check if usage is within configured limits."""
         if self.requests_this_minute >= config.requests_per_minute:
-            return False, f"Rate limit exceeded: {self.requests_this_minute}/{config.requests_per_minute} requests per minute"
+            return (
+                False,
+                f"Rate limit exceeded: {self.requests_this_minute}/{config.requests_per_minute} requests per minute",
+            )
 
         if self.requests_today >= config.requests_per_day:
-            return False, f"Daily limit exceeded: {self.requests_today}/{config.requests_per_day} requests"
+            return (
+                False,
+                f"Daily limit exceeded: {self.requests_today}/{config.requests_per_day} requests",
+            )
 
         if self.tokens_today >= config.tokens_per_day:
-            return False, f"Token limit exceeded: {self.tokens_today}/{config.tokens_per_day} tokens"
+            return (
+                False,
+                f"Token limit exceeded: {self.tokens_today}/{config.tokens_per_day} tokens",
+            )
 
         if self.active_agents > config.max_agents:
             return False, f"Agent limit exceeded: {self.active_agents}/{config.max_agents} agents"

@@ -20,6 +20,7 @@ from app.security.models import DetectionResult, ThreatType
 @dataclass
 class AgentActivity:
     """Track activity for an agent."""
+
     request_count: int = 0
     request_times: list[float] = field(default_factory=list)
     request_hashes: list[str] = field(default_factory=list)
@@ -71,8 +72,7 @@ class RunawayDetector(SyncDetector):
 
         # Clean old entries
         activity.request_times = [
-            t for t in activity.request_times
-            if current_time - t < self._window_size_seconds
+            t for t in activity.request_times if current_time - t < self._window_size_seconds
         ]
         activity.request_hashes = activity.request_hashes[-100:]  # Keep last 100
 
@@ -133,36 +133,40 @@ class RunawayDetector(SyncDetector):
         requests_last_minute = sum(1 for t in activity.request_times if t > one_minute_ago)
 
         if requests_last_minute > self._max_calls_per_minute:
-            results.append(self._create_result(
-                detected=True,
-                severity="high",
-                confidence=0.9,
-                source="behavioral",
-                description=f"High request rate detected: {requests_last_minute} calls/minute",
-                evidence={
-                    "requests_per_minute": requests_last_minute,
-                    "threshold": self._max_calls_per_minute,
-                },
-                rule_id="runaway_rate_v1",
-            ))
+            results.append(
+                self._create_result(
+                    detected=True,
+                    severity="high",
+                    confidence=0.9,
+                    source="behavioral",
+                    description=f"High request rate detected: {requests_last_minute} calls/minute",
+                    evidence={
+                        "requests_per_minute": requests_last_minute,
+                        "threshold": self._max_calls_per_minute,
+                    },
+                    rule_id="runaway_rate_v1",
+                )
+            )
 
         # Check 5-minute rate
         five_minutes_ago = current_time - 300
         requests_last_5min = sum(1 for t in activity.request_times if t > five_minutes_ago)
 
         if requests_last_5min > self._max_calls_per_5_minutes:
-            results.append(self._create_result(
-                detected=True,
-                severity="critical",
-                confidence=0.95,
-                source="behavioral",
-                description=f"Runaway loop detected: {requests_last_5min} calls in 5 minutes",
-                evidence={
-                    "requests_5_minutes": requests_last_5min,
-                    "threshold": self._max_calls_per_5_minutes,
-                },
-                rule_id="runaway_loop_v1",
-            ))
+            results.append(
+                self._create_result(
+                    detected=True,
+                    severity="critical",
+                    confidence=0.95,
+                    source="behavioral",
+                    description=f"Runaway loop detected: {requests_last_5min} calls in 5 minutes",
+                    evidence={
+                        "requests_5_minutes": requests_last_5min,
+                        "threshold": self._max_calls_per_5_minutes,
+                    },
+                    rule_id="runaway_loop_v1",
+                )
+            )
 
         return results
 
@@ -182,19 +186,21 @@ class RunawayDetector(SyncDetector):
         # Find any hash that appears too many times
         for hash_val, count in hash_counts.items():
             if count >= self._similar_request_threshold:
-                results.append(self._create_result(
-                    detected=True,
-                    severity="medium",
-                    confidence=0.8,
-                    source="behavioral",
-                    description=f"Repeated similar requests detected: {count} times",
-                    evidence={
-                        "repeat_count": count,
-                        "threshold": self._similar_request_threshold,
-                        "request_hash": hash_val[:8],
-                    },
-                    rule_id="runaway_repeat_v1",
-                ))
+                results.append(
+                    self._create_result(
+                        detected=True,
+                        severity="medium",
+                        confidence=0.8,
+                        source="behavioral",
+                        description=f"Repeated similar requests detected: {count} times",
+                        evidence={
+                            "repeat_count": count,
+                            "threshold": self._similar_request_threshold,
+                            "request_hash": hash_val[:8],
+                        },
+                        rule_id="runaway_repeat_v1",
+                    )
+                )
                 break  # Only report once
 
         return results

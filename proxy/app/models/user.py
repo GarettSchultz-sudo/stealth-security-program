@@ -1,10 +1,12 @@
 """User and API Key models."""
 
+from __future__ import annotations
+
 import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,10 +39,18 @@ class User(BaseModel):
     stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Relationships
-    api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    agents: Mapped[list["Agent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    budgets: Mapped[list["Budget"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    alerts: Mapped[list["Alert"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    api_keys: Mapped[list["ApiKey"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    agents: Mapped[list["Agent"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    budgets: Mapped[list["Budget"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    alerts: Mapped[list["Alert"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class ApiKey(BaseModel):
@@ -48,7 +58,9 @@ class ApiKey(BaseModel):
 
     __tablename__ = "api_keys"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     key_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     key_prefix: Mapped[str] = mapped_column(String(8), nullable=False)  # First 8 chars for display

@@ -126,7 +126,9 @@ class BaseDetector(abc.ABC):
         return self.priority < other.priority
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(name={self.name!r}, threat_type={self.threat_type.value})"
+        return (
+            f"{self.__class__.__name__}(name={self.name!r}, threat_type={self.threat_type.value})"
+        )
 
 
 class SyncDetector(BaseDetector):

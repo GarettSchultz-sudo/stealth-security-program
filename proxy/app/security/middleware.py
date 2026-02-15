@@ -8,15 +8,16 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from starlette.types import ASGIApp, Message
 
 from app.security.config import get_security_config
 from app.security.engine import SecurityEngine
-from app.security.models import ResponseAction, SeverityLevel
+from app.security.models import ResponseAction
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         if self._engine is None:
             # Try to get from global (set during lifespan)
             from app.main import get_security_engine
+
             global_engine = get_security_engine()
             if global_engine:
                 self._engine = global_engine
@@ -80,9 +82,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Only protect specific paths
-        should_protect = any(
-            request.url.path.startswith(p) for p in self.paths_to_protect
-        )
+        should_protect = any(request.url.path.startswith(p) for p in self.paths_to_protect)
 
         if not should_protect:
             return await call_next(request)
@@ -130,9 +130,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
         # Post-response security analysis
         if self._should_analyze_response(response):
-            response_summary = await self._analyze_response(
-                response, context, request_summary
-            )
+            response_summary = await self._analyze_response(response, context, request_summary)
 
             # Handle response-level blocks
             if ResponseAction.BLOCK in response_summary.actions_required:
@@ -186,20 +184,22 @@ class SecurityMiddleware(BaseHTTPMiddleware):
     def _block_response(self, summary) -> Response:
         """Create a blocked response."""
         return Response(
-            content=json.dumps({
-                "error": {
-                    "type": "security_violation",
-                    "message": "Request blocked by security policy",
-                    "severity": summary.max_severity.value,
-                    "threat_types": [t.value for t in summary.threat_types],
+            content=json.dumps(
+                {
+                    "error": {
+                        "type": "security_violation",
+                        "message": "Request blocked by security policy",
+                        "severity": summary.max_severity.value,
+                        "threat_types": [t.value for t in summary.threat_types],
+                    }
                 }
-            }),
+            ),
             status_code=403,
             media_type="application/json",
             headers={
                 "X-Security-Block": "true",
                 "X-Security-Severity": summary.max_severity.value,
-            }
+            },
         )
 
     async def _quarantine_request(
@@ -212,16 +212,14 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         """Quarantine a request for later review."""
         # In production, this would encrypt and store in database
         logger.info(
-            f"Quarantining request {context.get('request_id')} - "
-            f"{summary.max_severity.value}"
+            f"Quarantining request {context.get('request_id')} - {summary.max_severity.value}"
         )
 
     def _should_analyze_response(self, response: Response) -> bool:
         """Check if response should be analyzed."""
         # Only analyze successful JSON responses
-        return (
-            response.status_code == 200 and
-            response.headers.get("content-type", "").startswith("application/json")
+        return response.status_code == 200 and response.headers.get("content-type", "").startswith(
+            "application/json"
         )
 
     async def _analyze_response(

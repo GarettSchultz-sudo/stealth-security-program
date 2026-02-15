@@ -12,17 +12,18 @@ Rules are stored in database and can be managed via API.
 
 import logging
 import re
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable
-import uuid
+from typing import Any
 
 from app.security.detectors.base import SyncDetector
 from app.security.models import (
     DetectionResult,
-    DetectionSource,
     DetectionRule,
+    DetectionSource,
     ResponseAction,
     SeverityLevel,
     ThreatType,
@@ -33,14 +34,16 @@ logger = logging.getLogger(__name__)
 
 class RuleType(str, Enum):
     """Types of detection rules."""
-    PATTERN = "pattern"        # Regex pattern matching
-    THRESHOLD = "threshold"    # Numeric threshold comparison
+
+    PATTERN = "pattern"  # Regex pattern matching
+    THRESHOLD = "threshold"  # Numeric threshold comparison
     BEHAVIORAL = "behavioral"  # Based on request patterns
-    COMPOSITE = "composite"    # Combination of other rules
+    COMPOSITE = "composite"  # Combination of other rules
 
 
 class RuleOperator(str, Enum):
     """Operators for threshold and composite rules."""
+
     GT = ">"
     GTE = ">="
     LT = "<"
@@ -55,6 +58,7 @@ class RuleOperator(str, Enum):
 @dataclass
 class CompiledRule:
     """A compiled rule ready for execution."""
+
     id: str
     name: str
     rule_type: RuleType
@@ -284,7 +288,7 @@ class CustomRuleDetector(SyncDetector):
                         r"(\bDROP\b.*\bTABLE\b)",
                         r"(\bINSERT\b.*\bINTO\b.*\bVALUES\b)",
                     ],
-                    "match_type": "any"
+                    "match_type": "any",
                 },
                 "severity": "high",
                 "action": "alert",
@@ -300,7 +304,7 @@ class CustomRuleDetector(SyncDetector):
                         r"on(error|load|click)\s*=",
                         r"<img[^>]+onerror\s*=",
                     ],
-                    "match_type": "any"
+                    "match_type": "any",
                 },
                 "severity": "high",
                 "action": "alert",
@@ -316,7 +320,7 @@ class CustomRuleDetector(SyncDetector):
                         r"%2e%2e%2f",
                         r"%252e%252e%252f",
                     ],
-                    "match_type": "any"
+                    "match_type": "any",
                 },
                 "severity": "medium",
                 "action": "alert",
@@ -325,7 +329,7 @@ class CustomRuleDetector(SyncDetector):
 
         for i, rule_def in enumerate(builtin):
             rule = DetectionRule(
-                id=uuid.UUID(f"00000000-0000-0000-0000-00000000000{i+1}"),
+                id=uuid.UUID(f"00000000-0000-0000-0000-00000000000{i + 1}"),
                 name=rule_def["name"],
                 rule_type=rule_def["rule_type"],
                 rule_definition=rule_def["rule_definition"],
@@ -365,9 +369,7 @@ class CustomRuleDetector(SyncDetector):
 
         rule = self._rules[rule_id]
         if rule.org_id and rule.org_id in self._org_rules:
-            self._org_rules[rule.org_id] = [
-                r for r in self._org_rules[rule.org_id] if r != rule_id
-            ]
+            self._org_rules[rule.org_id] = [r for r in self._org_rules[rule.org_id] if r != rule_id]
 
         del self._rules[rule_id]
         logger.info(f"Removed rule: {rule_id}")
@@ -466,9 +468,7 @@ class CustomRuleDetector(SyncDetector):
 
         return " ".join(parts)
 
-    def _create_result_from_rule(
-        self, rule: CompiledRule, content: str
-    ) -> DetectionResult:
+    def _create_result_from_rule(self, rule: CompiledRule, content: str) -> DetectionResult:
         """Create a detection result from a matched rule."""
         return self._create_result(
             detected=True,

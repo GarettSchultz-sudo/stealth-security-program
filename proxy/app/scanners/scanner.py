@@ -1,12 +1,10 @@
 """Main ClawShell Scan implementation."""
 
-import asyncio
 import hashlib
 import json
 import os
-import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -90,9 +88,7 @@ class ClawShellScanner:
             virustotal_api_key: Optional VirusTotal API key for comprehensive scans
             custom_patterns: Optional custom patterns to detect
         """
-        self.virustotal_api_key = virustotal_api_key or os.environ.get(
-            "VIRUSTOTAL_API_KEY"
-        )
+        self.virustotal_api_key = virustotal_api_key or os.environ.get("VIRUSTOTAL_API_KEY")
         self.pattern_detector = MaliciousPatternDetector(custom_patterns)
         self.secret_detector = SecretDetector()
         self.trust_calculator = TrustScoreCalculator()
@@ -115,9 +111,7 @@ class ClawShellScanner:
         config = config or ScanConfig()
 
         # Get profile configuration
-        profile_config = self.PROFILE_CONFIGS.get(
-            config.profile, self.PROFILE_CONFIGS["standard"]
-        )
+        profile_config = self.PROFILE_CONFIGS.get(config.profile, self.PROFILE_CONFIGS["standard"])
 
         findings: list[dict] = []
         files_scanned = 0
@@ -136,7 +130,7 @@ class ClawShellScanner:
             # Load manifest
             manifest_path = skill_dir / "claw.json"
             if manifest_path.exists():
-                with open(manifest_path, "r", encoding="utf-8") as f:
+                with open(manifest_path, encoding="utf-8") as f:
                     manifest = json.load(f)
                     skill_id = manifest.get("name", "unknown")
                     skill_name = manifest.get("name", "unknown")
@@ -152,7 +146,7 @@ class ClawShellScanner:
             # Scan instructions.md
             instructions_path = skill_dir / "instructions.md"
             if instructions_path.exists():
-                with open(instructions_path, "r", encoding="utf-8") as f:
+                with open(instructions_path, encoding="utf-8") as f:
                     content = f.read()
 
                 if profile_config["check_patterns"]:
@@ -164,9 +158,7 @@ class ClawShellScanner:
                     patterns_checked += len(MaliciousPatternDetector.MALICIOUS_PATTERNS)
 
                 if profile_config["check_secrets"]:
-                    secret_findings = self.secret_detector.scan(
-                        content, "instructions.md"
-                    )
+                    secret_findings = self.secret_detector.scan(content, "instructions.md")
                     for f in secret_findings:
                         findings.append(self._pattern_to_finding(f, "instructions.md"))
 
@@ -262,7 +254,7 @@ class ClawShellScanner:
         for file_path in src_dir.rglob("*"):
             if file_path.suffix.lower() in extensions:
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
+                    with open(file_path, encoding="utf-8") as f:
                         content = f.read()
 
                     relative_path = str(file_path.relative_to(src_dir.parent))
@@ -274,15 +266,11 @@ class ClawShellScanner:
                         )
                         for f in pattern_findings:
                             findings.append(self._pattern_to_finding(f, relative_path))
-                        patterns_checked += len(
-                            MaliciousPatternDetector.MALICIOUS_PATTERNS
-                        )
+                        patterns_checked += len(MaliciousPatternDetector.MALICIOUS_PATTERNS)
 
                     # Scan for secrets
                     if profile_config["check_secrets"]:
-                        secret_findings = self.secret_detector.scan(
-                            content, relative_path
-                        )
+                        secret_findings = self.secret_detector.scan(content, relative_path)
                         for f in secret_findings:
                             findings.append(self._pattern_to_finding(f, relative_path))
 

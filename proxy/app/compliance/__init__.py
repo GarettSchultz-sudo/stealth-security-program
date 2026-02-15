@@ -16,17 +16,18 @@ Features:
 
 import json
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from enum import Enum
-from typing import Any, Optional
 import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class ComplianceFramework(str, Enum):
     """Supported compliance frameworks."""
+
     SOC2 = "SOC2"
     ISO27001 = "ISO27001"
     GDPR = "GDPR"
@@ -36,6 +37,7 @@ class ComplianceFramework(str, Enum):
 
 class ControlStatus(str, Enum):
     """Status of a compliance control."""
+
     COMPLIANT = "compliant"
     PARTIALLY_COMPLIANT = "partially_compliant"
     NON_COMPLIANT = "non_compliant"
@@ -45,6 +47,7 @@ class ControlStatus(str, Enum):
 
 class EvidenceType(str, Enum):
     """Types of compliance evidence."""
+
     AUTOMATED_CHECK = "automated_check"
     LOG_REVIEW = "log_review"
     CONFIGURATION_REVIEW = "configuration_review"
@@ -57,6 +60,7 @@ class EvidenceType(str, Enum):
 @dataclass
 class ComplianceControl:
     """A compliance control from a framework."""
+
     control_id: str
     framework: ComplianceFramework
     name: str
@@ -73,6 +77,7 @@ class ComplianceControl:
 @dataclass
 class Evidence:
     """Evidence for a compliance control."""
+
     id: str
     control_id: str
     evidence_type: EvidenceType
@@ -87,6 +92,7 @@ class Evidence:
 @dataclass
 class ComplianceReport:
     """A compliance report."""
+
     id: str
     framework: ComplianceFramework
     org_id: str
@@ -298,10 +304,7 @@ class ComplianceAssessor:
         framework: ComplianceFramework,
     ) -> list[ComplianceControl]:
         """Assess all controls in a framework."""
-        controls = [
-            c for c in self._controls.values()
-            if c.framework == framework
-        ]
+        controls = [c for c in self._controls.values() if c.framework == framework]
 
         for control in controls:
             try:
@@ -359,13 +362,9 @@ class ComplianceAssessor:
         recommendations = []
         for control in controls:
             if control.status == ControlStatus.NON_COMPLIANT:
-                recommendations.append(
-                    f"Remediate {control.control_id}: {control.name}"
-                )
+                recommendations.append(f"Remediate {control.control_id}: {control.name}")
             elif control.status == ControlStatus.PARTIALLY_COMPLIANT:
-                recommendations.append(
-                    f"Improve {control.control_id}: Address partial compliance"
-                )
+                recommendations.append(f"Improve {control.control_id}: Address partial compliance")
 
         return ComplianceReport(
             id=str(uuid.uuid4()),
@@ -389,33 +388,36 @@ class ComplianceAssessor:
 
     def export_report_json(self, report: ComplianceReport) -> str:
         """Export report as JSON."""
-        return json.dumps({
-            "id": report.id,
-            "framework": report.framework.value,
-            "org_id": report.org_id,
-            "period": {
-                "start": report.period_start.isoformat(),
-                "end": report.period_end.isoformat(),
+        return json.dumps(
+            {
+                "id": report.id,
+                "framework": report.framework.value,
+                "org_id": report.org_id,
+                "period": {
+                    "start": report.period_start.isoformat(),
+                    "end": report.period_end.isoformat(),
+                },
+                "generated_at": report.generated_at.isoformat(),
+                "overall_status": report.overall_status,
+                "compliance_score": report.compliance_score,
+                "summary": report.summary,
+                "controls": [
+                    {
+                        "control_id": c.control_id,
+                        "name": c.name,
+                        "category": c.category,
+                        "status": c.status.value,
+                        "evidence_count": len(c.evidence),
+                        "gaps": c.gaps,
+                        "remediation": c.remediation,
+                        "last_tested": c.last_tested.isoformat() if c.last_tested else None,
+                    }
+                    for c in report.controls
+                ],
+                "recommendations": report.recommendations,
             },
-            "generated_at": report.generated_at.isoformat(),
-            "overall_status": report.overall_status,
-            "compliance_score": report.compliance_score,
-            "summary": report.summary,
-            "controls": [
-                {
-                    "control_id": c.control_id,
-                    "name": c.name,
-                    "category": c.category,
-                    "status": c.status.value,
-                    "evidence_count": len(c.evidence),
-                    "gaps": c.gaps,
-                    "remediation": c.remediation,
-                    "last_tested": c.last_tested.isoformat() if c.last_tested else None,
-                }
-                for c in report.controls
-            ],
-            "recommendations": report.recommendations,
-        }, indent=2)
+            indent=2,
+        )
 
 
 # Built-in evidence collectors

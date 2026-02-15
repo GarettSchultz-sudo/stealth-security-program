@@ -12,39 +12,37 @@ Central orchestrator for runtime protection that:
 import asyncio
 import logging
 import uuid
-from collections import defaultdict
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime
 from decimal import Decimal
-from typing import Any, Callable
+from typing import Any
 
 from app.security.config import SecurityConfig
 from app.security.detectors import (
-    BaseDetector,
-    SyncDetector,
     AsyncDetector,
-    PromptInjectionDetector,
+    BaseDetector,
     CredentialDetector,
     DataExfiltrationDetector,
-    RunawayDetector,
-    ToolAbuseDetector,
-    SemanticDetector,
     FallbackSemanticDetector,
+    PromptInjectionDetector,
+    RunawayDetector,
+    SemanticDetector,
+    SyncDetector,
+    ToolAbuseDetector,
 )
 from app.security.detectors.anomaly import AnomalyDetector
-from app.security.rule_engine import CustomRuleDetector
 from app.security.models import (
     AgentSecurityPolicy,
     DetectionResult,
     DetectionSource,
-    QuarantinedRequest,
     ResponseAction,
     SecurityEvent,
     SeverityLevel,
     ThreatIndicator,
     ThreatType,
 )
+from app.security.rule_engine import CustomRuleDetector
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +50,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DetectionSummary:
     """Summary of all detections for a request/response."""
+
     detected: bool = False
     results: list[DetectionResult] = field(default_factory=list)
     max_severity: SeverityLevel = SeverityLevel.LOW
@@ -66,7 +65,12 @@ class DetectionSummary:
             self.detected = True
             self.threat_types.add(result.threat_type)
             # Update max severity
-            severity_order = [SeverityLevel.LOW, SeverityLevel.MEDIUM, SeverityLevel.HIGH, SeverityLevel.CRITICAL]
+            severity_order = [
+                SeverityLevel.LOW,
+                SeverityLevel.MEDIUM,
+                SeverityLevel.HIGH,
+                SeverityLevel.CRITICAL,
+            ]
             if severity_order.index(result.severity) > severity_order.index(self.max_severity):
                 self.max_severity = result.severity
             if result.confidence > self.max_confidence:
@@ -137,9 +141,7 @@ class SecurityEngine:
 
         logger.info(f"Registered detector: {detector.name} (priority={detector.priority})")
 
-    def register_action_handler(
-        self, action: ResponseAction, handler: Callable
-    ) -> None:
+    def register_action_handler(self, action: ResponseAction, handler: Callable) -> None:
         """Register a handler for a specific action type."""
         self._action_handlers[action] = handler
 
@@ -187,7 +189,7 @@ class SecurityEngine:
         async_results = await asyncio.gather(*async_tasks, return_exceptions=True)
 
         # Process sync results
-        for i, result in enumerate(sync_results):
+        for _i, result in enumerate(sync_results):
             if isinstance(result, Exception):
                 logger.error(f"Sync detector error: {result}")
             elif isinstance(result, list):
@@ -195,7 +197,7 @@ class SecurityEngine:
                     summary.add_result(r)
 
         # Process async results
-        for i, result in enumerate(async_results):
+        for _i, result in enumerate(async_results):
             if isinstance(result, Exception):
                 logger.error(f"Async detector error: {result}")
             elif isinstance(result, list):
@@ -308,22 +310,28 @@ class SecurityEngine:
         combined_text = " ".join(text_parts).lower()
 
         # Check each indicator
-        for key, indicator in self._threat_indicators.items():
+        for _key, indicator in self._threat_indicators.items():
             if indicator.ioc_value.lower() in combined_text:
-                results.append(DetectionResult(
-                    detected=True,
-                    threat_type=indicator.threat_types[0] if indicator.threat_types else ThreatType.CUSTOM,
-                    severity=indicator.severity,
-                    confidence=Decimal("0.9"),
-                    source=DetectionSource.EXTERNAL,
-                    description=f"Threat indicator matched: {indicator.ioc_type}",
-                    evidence={
-                        "ioc_type": indicator.ioc_type,
-                        "ioc_value": indicator.ioc_value[:50] + "..." if len(indicator.ioc_value) > 50 else indicator.ioc_value,
-                        "source": indicator.source,
-                    },
-                    rule_id="threat_indicator_v1",
-                ))
+                results.append(
+                    DetectionResult(
+                        detected=True,
+                        threat_type=indicator.threat_types[0]
+                        if indicator.threat_types
+                        else ThreatType.CUSTOM,
+                        severity=indicator.severity,
+                        confidence=Decimal("0.9"),
+                        source=DetectionSource.EXTERNAL,
+                        description=f"Threat indicator matched: {indicator.ioc_type}",
+                        evidence={
+                            "ioc_type": indicator.ioc_type,
+                            "ioc_value": indicator.ioc_value[:50] + "..."
+                            if len(indicator.ioc_value) > 50
+                            else indicator.ioc_value,
+                            "source": indicator.source,
+                        },
+                        rule_id="threat_indicator_v1",
+                    )
+                )
 
         return results
 
@@ -346,9 +354,12 @@ class SecurityEngine:
         if summary.max_severity == SeverityLevel.CRITICAL:
             if summary.max_confidence >= Decimal("0.8"):
                 actions.add(ResponseAction.BLOCK)
-                if policy and policy.auto_kill_enabled:
-                    if summary.max_confidence * 100 >= policy.auto_kill_threshold:
-                        actions.add(ResponseAction.KILL)
+                if (
+                    policy
+                    and policy.auto_kill_enabled
+                    and summary.max_confidence * 100 >= policy.auto_kill_threshold
+                ):
+                    actions.add(ResponseAction.KILL)
             actions.add(ResponseAction.ALERT)
             actions.add(ResponseAction.QUARANTINE)
 
@@ -368,9 +379,11 @@ class SecurityEngine:
         if ThreatType.CREDENTIAL_EXPOSURE in summary.threat_types:
             actions.add(ResponseAction.REDACT)
 
-        if ThreatType.DATA_EXFILTRATION in summary.threat_types:
-            if summary.max_severity in [SeverityLevel.HIGH, SeverityLevel.CRITICAL]:
-                actions.add(ResponseAction.BLOCK)
+        if ThreatType.DATA_EXFILTRATION in summary.threat_types and summary.max_severity in [
+            SeverityLevel.HIGH,
+            SeverityLevel.CRITICAL,
+        ]:
+            actions.add(ResponseAction.BLOCK)
 
         # Apply policy overrides
         if policy:
@@ -462,7 +475,9 @@ class SecurityEngine:
             org_id=uuid.UUID(context["org_id"]) if context.get("org_id") else None,
             agent_id=uuid.UUID(context["agent_id"]) if context.get("agent_id") else None,
             request_id=uuid.UUID(context["request_id"]) if context.get("request_id") else None,
-            threat_type=list(summary.threat_types)[0] if summary.threat_types else ThreatType.CUSTOM,
+            threat_type=list(summary.threat_types)[0]
+            if summary.threat_types
+            else ThreatType.CUSTOM,
             severity=summary.max_severity,
             confidence=summary.max_confidence,
             source=summary.results[0].source if summary.results else DetectionSource.HEURISTIC,
