@@ -241,7 +241,7 @@ jobs:
     name: Notify on Failure
     runs-on: ubuntu-latest
     needs: [test, security-scan, build, deploy]
-    if: failure()
+    if: failure() && vars.SLACK_NOTIFICATIONS_ENABLED == 'true'
 
     steps:
       - name: Send Slack notification
