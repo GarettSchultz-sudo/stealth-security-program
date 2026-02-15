@@ -39,7 +39,19 @@
       "Bash(git fetch:*)",
       "Bash(git rebase:*)",
       "Bash(python:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(uv sync:*)",
+      "Bash(pip install:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(git rm:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run test:*)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(ss:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr /i node)",
+      "Bash(supabase:*)"
     ]
   }
 }

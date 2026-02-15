@@ -34,6 +34,8 @@ import {
   Cloud,
   Container,
   GitBranch,
+  Zap,
+  TestTube,
 } from 'lucide-react'
 
 // Types
@@ -73,6 +75,11 @@ interface ScanResult {
   scan_duration_ms: number
   files_scanned: number
   patterns_checked: number
+  metadata?: {
+    scan_mode?: 'real' | 'simulation'
+    proxy_available?: boolean
+    note?: string
+  }
 }
 
 // Scan profiles
@@ -106,6 +113,14 @@ export default function ClawShieldPage() {
   const [profile, setProfile] = useState('standard')
   const [scanning, setScanning] = useState(false)
   const [scanId, setScanId] = useState<string | null>(null)
+  const [scanMode, setScanMode] = useState<'real' | 'simulation' | null>(null)
+  const [proxyAvailable, setProxyAvailable] = useState(false)
+  const [scannerStatus, setScannerStatus] = useState<{
+    checked: boolean
+    nuclei: boolean
+    trivy: boolean
+    prowler: boolean
+  }>({ checked: false, nuclei: false, trivy: false, prowler: false })
   const [progress, setProgress] = useState<ScanProgress | null>(null)
   const [result, setResult] = useState<ScanResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -135,6 +150,7 @@ export default function ClawShieldPage() {
     setError(null)
     setResult(null)
     setProgress(null)
+    setScanMode(null)
 
     try {
       const response = await fetch('/api/proxy/scan/scan', {
@@ -155,6 +171,8 @@ export default function ClawShieldPage() {
       }
 
       setScanId(data.scan_id)
+      setScanMode(data.scan_mode || null)
+      setProxyAvailable(data.proxy_available || false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start scan')
       setScanning(false)
@@ -239,9 +257,33 @@ export default function ClawShieldPage() {
     }
   }
 
+  // Check scanner health
+  const checkScannerHealth = async () => {
+    try {
+      const response = await fetch('/api/scans/health')
+      const data = await response.json()
+
+      setProxyAvailable(data.proxy_available)
+      setScannerStatus({
+        checked: true,
+        nuclei: data.scanners?.nuclei || false,
+        trivy: data.scanners?.trivy || false,
+        prowler: data.scanners?.prowler || false,
+      })
+    } catch (err) {
+      setScannerStatus({
+        checked: true,
+        nuclei: false,
+        trivy: false,
+        prowler: false,
+      })
+    }
+  }
+
   // Load history on mount
   useEffect(() => {
     fetchHistory()
+    checkScannerHealth()
   }, [])
 
   return (
@@ -249,13 +291,50 @@ export default function ClawShieldPage() {
       {/* Header */}
       <div className="flex items-center gap-3 mb-8">
         <Shield className="h-10 w-10 text-primary" />
-        <div>
+        <div className="flex-1">
           <h1 className="text-3xl font-bold">ClawShield Security Scanner</h1>
           <p className="text-muted-foreground">
             Scan URLs, repositories, containers, and cloud infrastructure for security vulnerabilities
           </p>
         </div>
+        {/* Scanner Status Indicator */}
+        {scannerStatus.checked && (
+          <div className="flex items-center gap-2">
+            {proxyAvailable ? (
+              <Badge className="bg-green-500">
+                <Zap className="h-3 w-3 mr-1" />
+                Real Scanning
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-yellow-600 border-yellow-500">
+                <TestTube className="h-3 w-3 mr-1" />
+                Simulation Mode
+              </Badge>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Scanner Tools Status */}
+      {scannerStatus.checked && (
+        <div className="flex flex-wrap gap-2 mb-6">
+          <span className="text-sm text-muted-foreground">Scanners:</span>
+          <Badge variant={scannerStatus.nuclei ? "default" : "outline"} className={scannerStatus.nuclei ? "bg-green-500" : "text-muted-foreground"}>
+            Nuclei {scannerStatus.nuclei ? '✓' : '✗'}
+          </Badge>
+          <Badge variant={scannerStatus.trivy ? "default" : "outline"} className={scannerStatus.trivy ? "bg-green-500" : "text-muted-foreground"}>
+            Trivy {scannerStatus.trivy ? '✓' : '✗'}
+          </Badge>
+          <Badge variant={scannerStatus.prowler ? "default" : "outline"} className={scannerStatus.prowler ? "bg-green-500" : "text-muted-foreground"}>
+            Prowler {scannerStatus.prowler ? '✓' : '✗'}
+          </Badge>
+          {!proxyAvailable && (
+            <span className="text-xs text-muted-foreground ml-2">
+              (Proxy unavailable - scans will use simulated data)
+            </span>
+          )}
+        </div>
+      )}
 
       <Tabs defaultValue="scan" className="space-y-6">
         <TabsList>
@@ -393,21 +472,61 @@ export default function ClawShieldPage() {
             </Card>
           )}
 
+          {/* Simulation Mode Warning */}
+          {(scanMode === 'simulation' || result?.metadata?.scan_mode === 'simulation') && (
+            <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+              <TestTube className="h-4 w-4 text-yellow-600" />
+              <AlertTitle className="text-yellow-700 dark:text-yellow-300">
+                Simulation Mode
+              </AlertTitle>
+              <AlertDescription className="text-yellow-600 dark:text-yellow-400">
+                This scan used simulated data. The proxy server is not available or scanner tools are not installed.
+                To enable real scanning, ensure the proxy is running with Nuclei, Trivy, and Prowler installed.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Real Scan Indicator */}
+          {scanMode === 'real' && scanning && (
+            <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+              <Zap className="h-4 w-4 text-green-600" />
+              <AlertTitle className="text-green-700 dark:text-green-300">
+                Real Scanning Active
+              </AlertTitle>
+              <AlertDescription className="text-green-600 dark:text-green-400">
+                Connected to proxy server. Running real security scans with Nuclei, Trivy, or Prowler.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Results Card */}
           {result && (
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2">
-                    {result.recommendation === 'safe' ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    ) : result.recommendation === 'avoid' ? (
-                      <XCircle className="h-5 w-5 text-red-500" />
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="flex items-center gap-2">
+                      {result.recommendation === 'safe' ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      ) : result.recommendation === 'avoid' ? (
+                        <XCircle className="h-5 w-5 text-red-500" />
+                      ) : (
+                        <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                      )}
+                      Scan Results
+                    </CardTitle>
+                    {result.metadata?.scan_mode === 'simulation' ? (
+                      <Badge variant="outline" className="text-yellow-600 border-yellow-500">
+                        <TestTube className="h-3 w-3 mr-1" />
+                        Simulated
+                      </Badge>
                     ) : (
-                      <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                      <Badge variant="outline" className="text-green-600 border-green-500">
+                        <Zap className="h-3 w-3 mr-1" />
+                        Real Scan
+                      </Badge>
                     )}
-                    Scan Results
-                  </CardTitle>
+                  </div>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => setResult(null)}>
                       <RefreshCw className="h-4 w-4 mr-2" />

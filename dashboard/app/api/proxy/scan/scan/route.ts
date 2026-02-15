@@ -152,6 +152,9 @@ export async function POST(request: NextRequest) {
     })
 
     // Call the proxy to execute the real scan
+    let scanMode = 'real' // Default to real scan
+    let proxyAvailable = false
+
     try {
       const proxyUrl = process.env.PROXY_URL || process.env.API_URL || 'http://localhost:8000'
       const scanResponse = await fetch(`${proxyUrl}/api/v1/scan/execute`, {
@@ -165,21 +168,41 @@ export async function POST(request: NextRequest) {
         }),
       })
 
-      if (!scanResponse.ok) {
+      if (scanResponse.ok) {
+        proxyAvailable = true
+        scanMode = 'real'
+      } else {
         console.error('Failed to start scan:', await scanResponse.text())
+        scanMode = 'simulation'
         // Fall back to simulation if proxy fails
         simulateScanCompletion(supabase, scan.id, scanProfile, skill_id || target)
       }
     } catch (error) {
       console.error('Error calling proxy scan:', error)
+      scanMode = 'simulation'
       // Fall back to simulation if proxy is unavailable
       simulateScanCompletion(supabase, scan.id, scanProfile, skill_id || target)
     }
+
+    // Update scan record with mode
+    await supabase
+      .from('skill_scans')
+      .update({
+        metadata: {
+          scan_mode: scanMode,
+          proxy_available: proxyAvailable,
+          target_type: target_type || 'url',
+          started_at: new Date().toISOString(),
+        }
+      })
+      .eq('id', scan.id)
 
     return NextResponse.json({
       scan_id: scan.id,
       status: 'pending',
       message: 'Scan queued successfully',
+      scan_mode: scanMode,
+      proxy_available: proxyAvailable,
     }, { status: 202 })
   } catch (error) {
     console.error('Error creating scan:', error)
@@ -250,6 +273,11 @@ async function simulateScanCompletion(
           files_scanned: filesScanned,
           patterns_checked: patternsChecked,
           completed_at: new Date().toISOString(),
+          metadata: {
+            scan_mode: 'simulation',
+            simulated_at: new Date().toISOString(),
+            note: 'This scan used simulated data. Run with proxy for real scanning.',
+          },
         })
         .eq('id', scanId)
 

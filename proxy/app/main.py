@@ -143,9 +143,22 @@ def create_app() -> FastAPI:
 
     # Health check endpoint
     @app.get("/health")
-    async def health_check() -> dict[str, str]:
+    async def health_check() -> dict:
         """Health check endpoint for load balancers and monitoring."""
-        return {"status": "healthy"}
+        import shutil
+
+        # Check which scanner tools are available
+        scanners = {
+            "nuclei": shutil.which("nuclei") is not None,
+            "trivy": shutil.which("trivy") is not None,
+            "prowler": shutil.which("prowler") is not None,
+        }
+
+        return {
+            "status": "healthy",
+            "scanners": scanners,
+            "scanners_available": any(scanners.values()),
+        }
 
     # Security status endpoint
     @app.get("/security/status")
