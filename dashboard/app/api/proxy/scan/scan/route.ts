@@ -50,6 +50,19 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (creditsError || !credits) {
+      // Ensure user exists in public.users table (required for foreign key)
+      const { error: userError } = await supabase
+        .from('users')
+        .upsert({
+          id: user.id,
+          email: user.email,
+        })
+
+      if (userError) {
+        console.error('Error creating user:', userError)
+        // Continue anyway - user might already exist
+      }
+
       // Create default credits for user if not exists
       const periodStart = new Date()
       const periodEnd = new Date()
@@ -140,7 +153,7 @@ export async function POST(request: NextRequest) {
 
     // Simulate scan completion for demo purposes
     // In production, this would be handled by a background worker
-    simulateScanCompletion(supabase, scan.id, scanProfile)
+    simulateScanCompletion(supabase, scan.id, scanProfile, skill_id || target)
 
     return NextResponse.json({
       scan_id: scan.id,
@@ -160,7 +173,8 @@ export async function POST(request: NextRequest) {
 async function simulateScanCompletion(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   scanId: string,
-  profile: ScanProfile
+  profile: ScanProfile,
+  target?: string
 ) {
   // Simulate delay based on scan profile
   const delays = { quick: 2000, standard: 4000, deep: 8000, comprehensive: 15000 }
@@ -168,12 +182,16 @@ async function simulateScanCompletion(
 
   setTimeout(async () => {
     try {
-      // Generate a random trust score based on profile depth
-      const baseScore = Math.floor(Math.random() * 40) + 50 // 50-90 base
-      const depthBonus = { quick: 0, standard: 5, deep: 5, comprehensive: 0 }
-      const trustScore = Math.min(100, Math.max(0, baseScore + (depthBonus[profile] || 0)))
+      // Generate deterministic-seeming but varied score based on target hash
+      const targetHash = target ? hashCode(target) : Math.random() * 1000
+      const randomSeed = (Date.now() + targetHash) % 100
 
-      // Determine risk level
+      // Score varies by target and profile depth
+      const profileMultipliers = { quick: 0.8, standard: 1.0, deep: 1.1, comprehensive: 1.2 }
+      const baseScore = Math.floor((randomSeed * (profileMultipliers[profile] || 1.0)) % 60 + 35)
+      const trustScore = Math.min(100, Math.max(0, baseScore))
+
+      // Determine risk level based on score
       let riskLevel: 'low' | 'medium' | 'high' | 'critical'
       let recommendation: 'safe' | 'caution' | 'avoid'
       if (trustScore >= 80) {
@@ -190,22 +208,46 @@ async function simulateScanCompletion(
         recommendation = 'avoid'
       }
 
+      // Generate mock findings based on risk level
+      const findingsCount = riskLevel === 'low' ? Math.floor(Math.random() * 3) :
+                           riskLevel === 'medium' ? Math.floor(Math.random() * 5) + 2 :
+                           riskLevel === 'high' ? Math.floor(Math.random() * 8) + 5 :
+                           Math.floor(Math.random() * 12) + 8
+
+      const filesScanned = Math.floor(Math.random() * 100) + (profile === 'comprehensive' ? 200 : 50)
+      const patternsChecked = Math.floor(Math.random() * 500) + (profile === 'deep' ? 300 : 100)
+
       // Update scan record
-      await supabase
+      const { error } = await supabase
         .from('skill_scans')
         .update({
           status: 'completed',
           trust_score: trustScore,
           risk_level: riskLevel,
           recommendation,
-          scan_duration_ms: delay,
-          files_scanned: Math.floor(Math.random() * 50) + 10,
-          patterns_checked: Math.floor(Math.random() * 200) + 50,
+          scan_duration_ms: delay + Math.floor(Math.random() * 2000),
+          files_scanned: filesScanned,
+          patterns_checked: patternsChecked,
           completed_at: new Date().toISOString(),
         })
         .eq('id', scanId)
+
+      if (error) {
+        console.error('Error updating scan:', error)
+      }
     } catch (error) {
       console.error('Error completing scan:', error)
     }
   }, delay)
+}
+
+// Simple hash function for deterministic-seeming variety
+function hashCode(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // Convert to 32bit integer
+  }
+  return Math.abs(hash)
 }

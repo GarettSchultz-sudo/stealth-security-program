@@ -14,13 +14,17 @@ settings = get_settings()
 
 # Create async engine (SQLite doesn't support pooling)
 is_sqlite = "sqlite" in settings.database_url
-engine = create_async_engine(
-    settings.database_url,
-    echo=settings.is_development,
-    pool_pre_ping=not is_sqlite,
-    pool_size=10 if not is_sqlite else None,
-    max_overflow=20 if not is_sqlite else None,
-)
+
+# Build engine kwargs based on database type
+engine_kwargs = {
+    "echo": settings.is_development,
+}
+if not is_sqlite:
+    engine_kwargs["pool_pre_ping"] = True
+    engine_kwargs["pool_size"] = 10
+    engine_kwargs["max_overflow"] = 20
+
+engine = create_async_engine(settings.database_url, **engine_kwargs)
 
 # Create async session factory
 AsyncSessionLocal = async_sessionmaker(
@@ -34,12 +38,17 @@ AsyncSessionLocal = async_sessionmaker(
 
 async def init_db() -> None:
     """Initialize database connection and create tables if needed."""
+    # Skip table creation for SQLite - models use PostgreSQL-specific types like JSONB
+    # In production, tables are created via Alembic migrations
+    if is_sqlite:
+        return
+
     async with engine.begin() as conn:
         # Import all models to ensure they're registered
         from app.models.base import Base  # noqa: F401
 
         # Tables will be created via Alembic migrations in production
-        # For development/testing, we can create them directly
+        # For development/testing with PostgreSQL, we can create them directly
         if settings.is_development:
             await conn.run_sync(Base.metadata.create_all)
 
