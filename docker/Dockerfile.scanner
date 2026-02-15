@@ -1,0 +1,44 @@
+# Scanner Worker Dockerfile
+# Includes Nuclei, Trivy, and Prowler security tools
+
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    git \
+    unzip \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Nuclei
+RUN curl -L https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_linux_amd64.zip -o nuclei.zip \
+    && unzip nuclei.zip -d /usr/local/bin \
+    && chmod +x /usr/local/bin/nuclei \
+    && rm nuclei.zip \
+    && nuclei -update-templates
+
+# Install Trivy
+RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.49.0
+
+# Install Prowler
+RUN pip install prowler
+
+# Install Python dependencies
+COPY proxy/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir arq
+
+# Copy application code
+COPY proxy/app /app/app
+WORKDIR /app
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+# Run the ARQ worker
+CMD ["python", "-m", "arq", "app.workers.queue.WorkerSettings"]

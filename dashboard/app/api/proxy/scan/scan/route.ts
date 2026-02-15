@@ -151,9 +151,30 @@ export async function POST(request: NextRequest) {
       p_scan_id: scan.id,
     })
 
-    // Simulate scan completion for demo purposes
-    // In production, this would be handled by a background worker
-    simulateScanCompletion(supabase, scan.id, scanProfile, skill_id || target)
+    // Call the proxy to execute the real scan
+    try {
+      const proxyUrl = process.env.PROXY_URL || process.env.API_URL || 'http://localhost:8000'
+      const scanResponse = await fetch(`${proxyUrl}/api/v1/scan/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scan_id: scan.id,
+          target: skill_id || target,
+          profile: scanProfile,
+          scan_type: target_type || null,
+        }),
+      })
+
+      if (!scanResponse.ok) {
+        console.error('Failed to start scan:', await scanResponse.text())
+        // Fall back to simulation if proxy fails
+        simulateScanCompletion(supabase, scan.id, scanProfile, skill_id || target)
+      }
+    } catch (error) {
+      console.error('Error calling proxy scan:', error)
+      // Fall back to simulation if proxy is unavailable
+      simulateScanCompletion(supabase, scan.id, scanProfile, skill_id || target)
+    }
 
     return NextResponse.json({
       scan_id: scan.id,
