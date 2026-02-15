@@ -9,6 +9,7 @@ Components:
 - SecurityMiddleware: FastAPI middleware for request/response interception
 - Detectors: Individual threat detection modules
 - Models: Data structures for events, policies, and results
+- RuleEngine: Custom organization-specific detection rules
 """
 
 from app.security.engine import SecurityEngine, DetectionSummary
@@ -27,6 +28,7 @@ from app.security.models import (
     ThreatIndicator,
 )
 from app.security.config import SecurityConfig, get_security_config, configure_security
+from app.security.rule_engine import CustomRuleDetector, RuleCompiler, RuleEvaluator
 from app.security.detectors import (
     BaseDetector,
     SyncDetector,
@@ -37,6 +39,8 @@ from app.security.detectors import (
     RunawayDetector,
     ToolAbuseDetector,
     AnomalyDetector,
+    SemanticDetector,
+    FallbackSemanticDetector,
 )
 
 __all__ = [
@@ -62,6 +66,10 @@ __all__ = [
     "SecurityConfig",
     "get_security_config",
     "configure_security",
+    # Rule Engine
+    "CustomRuleDetector",
+    "RuleCompiler",
+    "RuleEvaluator",
     # Detectors
     "BaseDetector",
     "SyncDetector",
@@ -72,4 +80,6 @@ __all__ = [
     "RunawayDetector",
     "ToolAbuseDetector",
     "AnomalyDetector",
+    "SemanticDetector",
+    "FallbackSemanticDetector",
 ]

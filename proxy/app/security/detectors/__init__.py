@@ -9,6 +9,7 @@ from app.security.detectors.data_exfil import DataExfiltrationDetector
 from app.security.detectors.runaway import RunawayDetector
 from app.security.detectors.tool_abuse import ToolAbuseDetector
 from app.security.detectors.anomaly import AnomalyDetector
+from app.security.detectors.semantic import SemanticDetector, FallbackSemanticDetector
 
 __all__ = [
     "BaseDetector",
@@ -20,4 +21,6 @@ __all__ = [
     "RunawayDetector",
     "ToolAbuseDetector",
     "AnomalyDetector",
+    "SemanticDetector",
+    "FallbackSemanticDetector",
 ]

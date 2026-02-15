@@ -29,8 +29,11 @@ from app.security.detectors import (
     DataExfiltrationDetector,
     RunawayDetector,
     ToolAbuseDetector,
+    SemanticDetector,
+    FallbackSemanticDetector,
 )
 from app.security.detectors.anomaly import AnomalyDetector
+from app.security.rule_engine import CustomRuleDetector
 from app.security.models import (
     AgentSecurityPolicy,
     DetectionResult,
@@ -110,6 +113,9 @@ class SecurityEngine:
             RunawayDetector(),
             ToolAbuseDetector(),
             AnomalyDetector(),
+            CustomRuleDetector(),
+            FallbackSemanticDetector(),  # Always available as fallback
+            SemanticDetector(),  # Requires sentence-transformers
         ]
 
         for detector in builtin:
