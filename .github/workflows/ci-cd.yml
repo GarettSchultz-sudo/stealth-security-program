@@ -16,6 +16,11 @@ on:
           - staging
           - production
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: clawshell-proxy
@@ -85,7 +90,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
 
