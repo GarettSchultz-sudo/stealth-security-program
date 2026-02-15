@@ -39,7 +39,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         excluded_paths: list[str] | None = None,
     ):
         super().__init__(app)
-        self.engine = security_engine or SecurityEngine()
+        self._engine = security_engine
         self.config = get_security_config()
 
         # Default paths to protect (LLM API endpoints)
@@ -56,6 +56,20 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "/metrics",
             "/favicon.ico",
         ]
+
+    @property
+    def engine(self) -> SecurityEngine:
+        """Get the security engine, initializing if needed."""
+        if self._engine is None:
+            # Try to get from global (set during lifespan)
+            from app.main import get_security_engine
+            global_engine = get_security_engine()
+            if global_engine:
+                self._engine = global_engine
+            else:
+                # Fallback: create new instance
+                self._engine = SecurityEngine()
+        return self._engine
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request through security pipeline."""
