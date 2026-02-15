@@ -106,16 +106,23 @@ jobs:
           pip install safety
           safety check --json || true
 
-  # Build and Push Docker Image
+  # Build and Push Docker Image (disabled until AWS is configured)
   build:
-    name: Build & Push Image
+    name: Build & Push Image (Disabled)
     runs-on: ubuntu-latest
     needs: [test, security-scan]
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # Disabled until AWS credentials are configured
+    # Enable by setting AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY secrets
+    if: ${{ secrets.AWS_ACCESS_KEY_ID != '' && github.event_name == 'push' }}
     outputs:
       image_tag: ${{ steps.build.outputs.image_tag }}
 
     steps:
+      - name: Skip - AWS not configured
+        run: |
+          echo "Build stage disabled until AWS credentials are configured."
+          echo "To enable: Add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY secrets"
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -157,17 +164,21 @@ jobs:
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
-  # Deploy to ECS
+  # Deploy to ECS (disabled until AWS is configured)
   deploy:
-    name: Deploy to ECS
+    name: Deploy to ECS (Disabled)
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: false  # Disabled until AWS is configured
     environment:
       name: ${{ github.event.inputs.environment || 'staging' }}
       url: https://${{ steps.deploy.outputs.alb_dns }}
 
     steps:
+      - name: Skip - AWS not configured
+        run: |
+          echo "Deploy stage disabled until AWS credentials are configured."
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -245,7 +256,7 @@ jobs:
   notify-failure:
     name: Notify on Failure
     runs-on: ubuntu-latest
-    needs: [test, security-scan, build, deploy]
+    needs: [test, security-scan]
     if: failure() && vars.SLACK_NOTIFICATIONS_ENABLED == 'true'
 
     steps:
