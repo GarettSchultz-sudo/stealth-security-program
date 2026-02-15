@@ -1,0 +1,315 @@
+# AgentCostControl - Agent Team Input Criteria
+# Generated from structured interview on 2026-02-15
+# This file contains all decisions from the 7-round interview process
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  PROJECT IDENTITY (required)                                 ║
+# ╚══════════════════════════════════════════════════════════════╝
+project_name: "AgentCostControl"
+project_slug: "agentcostcontrol"
+prompt_file: "MVP_LAUNCH_CHECKLIST.md"
+goal_summary: "Full Production - Production-ready AI Cost Control Proxy with monitoring, scaling, and hardening"
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  ARCHITECTURE (all concrete - no research needed)            ║
+# ╚══════════════════════════════════════════════════════════════╝
+tech_stack:
+  backend_framework:
+    value: "FastAPI"
+    # No research needed - locked in
+
+  backend_language:
+    value: "Python"
+    # No research needed - locked in
+
+  frontend_framework:
+    value: "Next.js 15 + React 19 + TypeScript + Tailwind + shadcn/ui"
+    # No research needed - locked in
+
+  database:
+    value: "Supabase (PostgreSQL) with RLS"
+    # No research needed - locked in
+
+  cache:
+    value: "Upstash Redis"
+    # No research needed - locked in
+
+  deployment:
+    value: "Vercel (dashboard) + Railway/Fly.io (proxy)"
+    # No research needed - locked in
+
+  client_type:
+    value: "Web only"
+    # No research needed - locked in
+
+# Service list - concrete based on existing codebase + microservices plan
+services:
+  value:
+    - "dashboard"        # Next.js frontend
+    - "proxy"            # FastAPI backend proxy
+    - "services/auth"    # Auth microservice (to be extracted)
+    - "services/budget"  # Budget microservice (to be extracted)
+    - "services/routing" # Routing microservice (to be extracted)
+    - "services/analytics" # Analytics microservice (to be extracted)
+    - "services/payments" # Payments microservice (to be extracted)
+
+service_base_path: "services"
+service_entry_file: "main.py"
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  DEPLOYMENT TARGET (required)                                ║
+# ╚══════════════════════════════════════════════════════════════╝
+hosting:
+  value: "Vercel + Railway/Fly.io"
+
+target_users:
+  value: "100-1000 users"
+
+geo_distribution:
+  value: "Global"
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  FEATURES (required - list what needs implementation)        ║
+# ╚══════════════════════════════════════════════════════════════╝
+features:
+  - name: "Database & Migrations"
+    category: "data"
+    critical_path: false
+    approach:
+      value: "Apply Supabase migrations, complete models, seed 91 model pricing data"
+
+  - name: "LLM Proxy Handler"
+    category: "proxy"
+    critical_path: false
+    approach:
+      value: "Complete FastAPI streaming proxy for Anthropic and OpenAI endpoints"
+
+  - name: "Budget Engine"
+    category: "budget"
+    critical_path: false
+    approach:
+      value: "Implement budget tracking and enforcement middleware"
+
+  - name: "Smart Router"
+    category: "routing"
+    critical_path: false
+    approach:
+      value: "Implement cost optimization with intelligent model routing"
+
+  - name: "Security Scanner (ClawShield)"
+    category: "security"
+    critical_path: true  # The riskiest/hardest feature
+    approach:
+      research: "Compare middleware-based vs wrapper-based vs sidecar integration for security scanning"
+      constraints:
+        - "Must scan before request forwards"
+        - "Must support async detection"
+        - "<30s scan time for typical skill"
+        - "<10ms latency overhead"
+
+  - name: "Analytics & Dashboards"
+    category: "analytics"
+    critical_path: false
+    approach:
+      value: "Complete analytics API and dashboard visualizations"
+
+  - name: "Payments & Billing"
+    category: "payments"
+    critical_path: false
+    approach:
+      value: "Complete Stripe checkout integration with webhook handling"
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  TEAM TOPOLOGY (required)                                    ║
+# ╚══════════════════════════════════════════════════════════════╝
+team_topology: "swarm"
+
+# Team configuration (used for swarm topology)
+team_config:
+  team_name: "agentcostcontrol-build"
+  delegate_lead: true                            # Lead only coordinates, never implements
+  require_plan_approval: true                    # Teammates must get plan approved before coding
+  default_teammate_model: "sonnet"               # Use current GLM model API
+
+  # Waves: groups of phases that run in parallel.
+  # Phases within a wave have NO dependencies on each other.
+  # Waves run sequentially (wave 0 finishes before wave 1 starts).
+  waves:
+    - wave: 0
+      mode: "lead-solo"                          # Lead runs these directly (no teammates)
+      phases: ["step0", "phase1"]
+      description: "Bootstrap + Assessment"
+
+    - wave: 1
+      mode: "parallel"                           # Spawn teammates for these
+      phases: ["phase2", "phase3", "phase4", "phase5"]
+      description: "Foundation Features"
+      teammates:
+        - name: "database-dev"
+          phase: "phase2"
+          subagent_type: "general-purpose"
+          owns_files: ["supabase/migrations/**", "proxy/app/models/**"]
+        - name: "proxy-dev"
+          phase: "phase3"
+          subagent_type: "general-purpose"
+          owns_files: ["proxy/app/core/proxy_handler.py", "proxy/app/core/stream*.py"]
+        - name: "budget-dev"
+          phase: "phase4"
+          subagent_type: "general-purpose"
+          owns_files: ["proxy/app/core/budget_engine.py", "proxy/app/api/v1/budgets.py"]
+        - name: "router-dev"
+          phase: "phase5"
+          subagent_type: "general-purpose"
+          owns_files: ["proxy/app/core/smart_router.py", "proxy/app/api/v1/routing.py"]
+
+    - wave: 2
+      mode: "parallel"
+      phases: ["phase6", "phase7", "phase8", "phase9"]
+      description: "Advanced Features"
+      teammates:
+        - name: "security-dev"
+          phase: "phase6"                         # CRITICAL PATH
+          subagent_type: "general-purpose"
+          owns_files: ["proxy/app/security/**", "proxy/app/scanners/**"]
+          critical_path: true
+          use_competing_hypotheses: true
+        - name: "analytics-dev"
+          phase: "phase7"
+          subagent_type: "general-purpose"
+          owns_files: ["dashboard/app/analytics/**", "proxy/app/api/v1/analytics.py"]
+        - name: "payments-dev"
+          phase: "phase8"
+          subagent_type: "general-purpose"
+          owns_files: ["dashboard/app/api/stripe/**", "dashboard/app/api/webhooks/stripe/**"]
+        - name: "microservices-dev"
+          phase: "phase9"
+          subagent_type: "general-purpose"
+          owns_files: ["services/**", "docker/**", "docker-compose.yml"]
+
+    - wave: 3
+      mode: "lead-solo"
+      phases: ["phaseD", "phaseF"]
+      description: "Deployment + Testing"
+
+  # Quality gate: lead reviews each task before accepting completion
+  quality_gates:
+    require_tests_pass: true                     # Teammate must confirm tests pass
+    require_code_review: true                    # Lead or peer reviews before task closes
+    require_memory_checkpoint: true              # Teammate must save state to Memory MCP
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  SUCCESS CRITERIA (required)                                 ║
+# ╚══════════════════════════════════════════════════════════════╝
+success_criteria:
+  functional:
+    - value: "Proxy intercepts Anthropic /v1/messages and OpenAI /v1/chat/completions"
+    - value: "Budget enforcement blocks requests when limit exceeded"
+    - value: "Smart router applies cost optimization rules"
+    - value: "ClawShield scans for prompt injection, secrets, and malware patterns"
+    - value: "Analytics dashboard shows spend by model, provider, and agent"
+    - value: "Payment integration creates Stripe checkout sessions"
+    - value: "Microservices communicate via REST + shared database"
+
+  infrastructure:
+    - value: "SSL/TLS on all services"
+    - value: "Automated database backups"
+    - value: "Sentry monitoring configured"
+    - value: "Health monitoring active"
+
+  deployment:
+    - value: "Single command deploy"
+    - value: "Environment docs in .env.example"
+    - value: "Setup documentation complete"
+
+  performance:
+    - value: "Proxy latency < 10ms overhead"
+    - value: "100 concurrent requests supported"
+    - value: "High availability (99.9% target)"
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  CUSTOM PHASES (beyond template defaults)                    ║
+# ╚══════════════════════════════════════════════════════════════╝
+custom_phases:
+  - name: "Content Seeding"
+    description: "Seed pricing/model data for 91 LLM models"
+    depends_on: ["phase2"]
+    produces: "Complete pricing data for all providers"
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  PHASE CUSTOMIZATION                                         ║
+# ╚══════════════════════════════════════════════════════════════╝
+phase_customization:
+  foundation:
+    includes:
+      - "Database layer (Supabase migrations)"
+      - "Core APIs (FastAPI routes)"
+      - "Docker setup"
+      - "Shared config"
+
+  deployment:
+    includes:
+      - "Vercel dashboard deployment"
+      - "Railway/Fly.io proxy deployment"
+      - "Production environment variables"
+    custom_domains: false
+
+  testing:
+    includes:
+      - "Unit tests for all services"
+      - "Integration tests for API flows"
+      - "Security audit"
+    load_testing: true
+    e2e_testing: true
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  EXTERNAL DEPENDENCIES                                       ║
+# ╚══════════════════════════════════════════════════════════════╝
+external_dependencies:
+  - name: "LLM APIs"
+    providers: ["Anthropic", "OpenAI", "Google", "DeepSeek", "XAI", "Mistral"]
+    required_env_vars:
+      - "ANTHROPIC_API_KEY"
+      - "OPENAI_API_KEY"
+
+  - name: "Stripe"
+    required_env_vars:
+      - "STRIPE_SECRET_KEY"
+      - "STRIPE_WEBHOOK_SECRET"
+
+  - name: "Resend"
+    required_env_vars:
+      - "RESEND_API_KEY"
+
+  - name: "Sentry"
+    required_env_vars:
+      - "SENTRY_DSN"
+
+  - name: "Supabase"
+    required_env_vars:
+      - "NEXT_PUBLIC_SUPABASE_URL"
+      - "SUPABASE_SERVICE_ROLE_KEY"
+
+  - name: "Upstash Redis"
+    required_env_vars:
+      - "UPSTASH_REDIS_REST_URL"
+      - "UPSTASH_REDIS_REST_TOKEN"
+
+# ╔══════════════════════════════════════════════════════════════╗
+# ║  INTERVIEW METADATA                                          ║
+# ╚══════════════════════════════════════════════════════════════╝
+interview_metadata:
+  date: "2026-02-15"
+  rounds_completed: 7
+  research_questions_count: 0  # All tech decisions were concrete
+  total_features: 7
+  parallel_waves: 2
+  total_teammates: 8
+  estimated_duration: "2-4 hours"
+
+  decisions_summary:
+    topology: "Swarm (per-wave teams)"
+    lead_role: "Delegate-only"
+    plan_approval: "Required"
+    file_ownership: "By service directory"
+    critical_path_feature: "ClawShield Security"
+    critical_path_approach: "Competing hypotheses pattern"

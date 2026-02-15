@@ -2,8 +2,11 @@
 
 import uuid
 from datetime import datetime, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
@@ -15,6 +18,7 @@ from app.models.user import ApiKey, User
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+security = HTTPBearer(auto_error=False)
 settings = get_settings()
 
 
@@ -71,8 +75,6 @@ class ApiKeyResponse(BaseModel):
 
 def create_access_token(user_id: str) -> str:
     """Create JWT access token."""
-    from jose import jwt
-
     expire = datetime.utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
     to_encode = {"sub": user_id, "exp": expire, "type": "access"}
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
@@ -80,8 +82,6 @@ def create_access_token(user_id: str) -> str:
 
 def create_refresh_token(user_id: str) -> str:
     """Create JWT refresh token."""
-    from jose import jwt
-
     expire = datetime.utcnow() + timedelta(days=settings.refresh_token_expire_days)
     to_encode = {"sub": user_id, "exp": expire, "type": "refresh"}
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
@@ -97,6 +97,77 @@ def generate_api_key() -> tuple[str, str, str]:
     key_prefix = key[:12]  # acc_xxxxxxxx
 
     return key, key_hash, key_prefix
+
+
+async def get_current_user_id(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(security)],
+) -> uuid.UUID:
+    """
+    Extract and validate user ID from JWT token.
+
+    This is the proper auth implementation replacing the hardcoded user_id.
+
+    Raises:
+        HTTPException: If token is missing, invalid, or user not found
+
+    Returns:
+        UUID of the authenticated user
+    """
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = credentials.credentials
+
+    try:
+        payload = jwt.decode(
+            token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+        )
+        user_id = payload.get("sub")
+        token_type = payload.get("type")
+
+        if user_id is None or token_type != "access":
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+
+        return uuid.UUID(user_id)
+
+    except JWTError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid user ID in token: {e}")
+
+
+async def get_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(security)],
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """
+    Get the current authenticated user from JWT token.
+
+    Returns:
+        User model instance
+
+    Raises:
+        HTTPException: If not authenticated or user not found
+    """
+    user_id = await get_current_user_id(credentials)
+    user = await db.get(User, user_id)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is disabled")
+
+    return user
+
+
+# Type alias for dependency injection
+CurrentUserId = Annotated[uuid.UUID, Depends(get_current_user_id)]
+CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 @router.post("/register", response_model=UserResponse)
@@ -158,8 +229,6 @@ async def refresh_token(
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     """Refresh access token."""
-    from jose import JWTError, jwt
-
     try:
         payload = jwt.decode(
             refresh_token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
@@ -185,14 +254,14 @@ async def refresh_token(
 @router.post("/api-keys", response_model=dict)
 async def create_api_key(
     key_data: ApiKeyCreate,
-    user_id: str = "00000000-0000-0000-0000-000000000001",  # TODO: Auth
+    user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Create a new API key for the proxy."""
     full_key, key_hash, key_prefix = generate_api_key()
 
     api_key = ApiKey(
-        user_id=uuid.UUID(user_id),
+        user_id=user.id,
         name=key_data.name,
         key_hash=key_hash,
         key_prefix=key_prefix,
@@ -214,13 +283,13 @@ async def create_api_key(
 
 @router.get("/api-keys", response_model=list[ApiKeyResponse])
 async def list_api_keys(
-    user_id: str = "00000000-0000-0000-0000-000000000001",
+    user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> list[ApiKeyResponse]:
     """List all API keys for the current user."""
     result = await db.execute(
         select(ApiKey)
-        .where(ApiKey.user_id == uuid.UUID(user_id))
+        .where(ApiKey.user_id == user.id)
         .order_by(ApiKey.created_at.desc())
     )
     keys = result.scalars().all()
@@ -241,13 +310,13 @@ async def list_api_keys(
 @router.delete("/api-keys/{key_id}")
 async def revoke_api_key(
     key_id: str,
-    user_id: str = "00000000-0000-0000-0000-000000000001",
+    user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Revoke an API key."""
     key = await db.get(ApiKey, uuid.UUID(key_id))
 
-    if not key or key.user_id != uuid.UUID(user_id):
+    if not key or key.user_id != user.id:
         raise HTTPException(status_code=404, detail="API key not found")
 
     key.is_active = False
@@ -257,16 +326,10 @@ async def revoke_api_key(
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user(
-    user_id: str = "00000000-0000-0000-0000-000000000001",
-    db: AsyncSession = Depends(get_db),
+async def get_current_user_info(
+    user: CurrentUser,
 ) -> UserResponse:
     """Get current user info."""
-    user = await db.get(User, uuid.UUID(user_id))
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     return UserResponse(
         id=str(user.id),
         email=user.email,

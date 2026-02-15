@@ -4,11 +4,12 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.budget_engine import BudgetEngine
 from app.models.budget import Budget, BudgetAction, BudgetPeriod, BudgetScope
 from app.models.database import get_db
 
@@ -294,3 +295,120 @@ async def reset_budget(
         "id": budget_id,
         "new_reset_at": budget.reset_at.isoformat(),
     }
+
+
+class BudgetStatusResponse(BaseModel):
+    """Budget status response model."""
+
+    id: str
+    name: str
+    period: str
+    scope: str
+    limit_usd: float
+    current_spend_usd: float
+    remaining_usd: float
+    percent_used: float
+    status: str
+    reset_at: str
+    alert_thresholds: dict
+
+
+class BudgetUsageHistoryResponse(BaseModel):
+    """Budget usage history response model."""
+
+    budget_id: str
+    budget_name: str
+    period: str
+    limit_usd: float
+    current_spend_usd: float
+    days_included: int
+    total_cost_usd: float
+    total_requests: int
+    daily_usage: list[dict]
+
+
+class BudgetSummaryResponse(BaseModel):
+    """Budget summary with alerts response model."""
+
+    total_budgets: int
+    active_alerts: list[dict]
+    budgets: list[dict]
+    overall_status: str
+
+
+@router.get("/status/summary", response_model=BudgetSummaryResponse)
+async def get_budget_summary(
+    user_id: str = "00000000-0000-0000-0000-000000000001",
+    db: AsyncSession = Depends(get_db),
+) -> BudgetSummaryResponse:
+    """
+    Get comprehensive budget summary including alert status.
+
+    Returns all budgets, their current status, and any active alerts.
+    """
+    engine = BudgetEngine(db)
+    summary = await engine.get_budget_summary_with_alerts(uuid.UUID(user_id))
+    return BudgetSummaryResponse(**summary)
+
+
+@router.get("/{budget_id}/status", response_model=BudgetStatusResponse)
+async def get_budget_status(
+    budget_id: str,
+    user_id: str = "00000000-0000-0000-0000-000000000001",
+    db: AsyncSession = Depends(get_db),
+) -> BudgetStatusResponse:
+    """
+    Get current status of a specific budget.
+
+    Includes alert thresholds and real-time spend information.
+    """
+    budget = await db.get(Budget, uuid.UUID(budget_id))
+
+    if not budget or budget.user_id != uuid.UUID(user_id):
+        raise HTTPException(status_code=404, detail="Budget not found")
+
+    engine = BudgetEngine(db)
+    status_level = engine._get_budget_status_level(budget)
+
+    return BudgetStatusResponse(
+        id=str(budget.id),
+        name=budget.name,
+        period=budget.period.value,
+        scope=budget.scope.value,
+        limit_usd=float(budget.limit_usd),
+        current_spend_usd=float(budget.current_spend_usd),
+        remaining_usd=float(budget.remaining_usd),
+        percent_used=budget.percent_used,
+        status=status_level,
+        reset_at=budget.reset_at.isoformat(),
+        alert_thresholds={
+            "warning": budget.warning_threshold_percent,
+            "critical": budget.critical_threshold_percent,
+            "standard": [50, 75, 90, 100],
+        },
+    )
+
+
+@router.get("/{budget_id}/history", response_model=BudgetUsageHistoryResponse)
+async def get_budget_usage_history(
+    budget_id: str,
+    user_id: str = "00000000-0000-0000-0000-000000000001",
+    days: int = Query(default=30, ge=1, le=365, description="Number of days of history"),
+    db: AsyncSession = Depends(get_db),
+) -> BudgetUsageHistoryResponse:
+    """
+    Get usage history for a specific budget.
+
+    Returns daily aggregated spending data for the specified time period.
+    """
+    engine = BudgetEngine(db)
+    history = await engine.get_budget_usage_history(
+        budget_id=uuid.UUID(budget_id),
+        user_id=uuid.UUID(user_id),
+        days=days,
+    )
+
+    if "error" in history:
+        raise HTTPException(status_code=history.get("status", 404), detail=history["error"])
+
+    return BudgetUsageHistoryResponse(**history)

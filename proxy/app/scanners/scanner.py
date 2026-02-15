@@ -2,9 +2,11 @@
 
 import hashlib
 import json
+import logging
 import os
+import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,215 @@ import aiohttp
 
 from app.scanners.patterns import MaliciousPatternDetector, SecretDetector
 from app.scanners.trust_scorer import TrustScoreCalculator, TrustScoreResult
+
+logger = logging.getLogger(__name__)
+
+# ClawHub API configuration
+CLAWHUB_API_BASE_URL = os.environ.get("CLAWHUB_API_URL", "https://api.clawhub.io/v1")
+CLAWHUB_API_TIMEOUT = 30  # seconds
+
+
+@dataclass
+class ClawHubSkillInfo:
+    """Information about a skill from ClawHub API."""
+
+    skill_id: str
+    name: str
+    version: str
+    author: str
+    author_verified: bool = False
+    downloads: int = 0
+    rating: float = 0.0
+    created_at: str | None = None
+    updated_at: str | None = None
+    repository_url: str | None = None
+    description: str | None = None
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ClawHubCommunityInfo:
+    """Community information from ClawHub API."""
+
+    stars: int = 0
+    forks: int = 0
+    issues: int = 0
+    contributors: int = 0
+    verified: bool = False
+
+
+class ClawHubAPIClient:
+    """Client for interacting with the ClawHub API."""
+
+    def __init__(self, api_key: str | None = None, base_url: str | None = None):
+        """Initialize ClawHub API client.
+
+        Args:
+            api_key: Optional API key for authenticated requests
+            base_url: Optional base URL override
+        """
+        self.api_key = api_key or os.environ.get("CLAWHUB_API_KEY")
+        self.base_url = base_url or CLAWHUB_API_BASE_URL
+        self._session: aiohttp.ClientSession | None = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create aiohttp session."""
+        if self._session is None or self._session.closed:
+            headers = {"Content-Type": "application/json"}
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+            self._session = aiohttp.ClientSession(
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=CLAWHUB_API_TIMEOUT),
+            )
+        return self._session
+
+    async def close(self) -> None:
+        """Close the aiohttp session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+
+    async def get_skill_info(self, skill_id: str) -> ClawHubSkillInfo | None:
+        """Fetch skill information from ClawHub.
+
+        Args:
+            skill_id: The skill identifier
+
+        Returns:
+            ClawHubSkillInfo or None if not found
+        """
+        try:
+            session = await self._get_session()
+            url = f"{self.base_url}/skills/{skill_id}"
+
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return ClawHubSkillInfo(
+                        skill_id=data.get("id", skill_id),
+                        name=data.get("name", "unknown"),
+                        version=data.get("version", "0.0.0"),
+                        author=data.get("author", {}).get("name", "unknown"),
+                        author_verified=data.get("author", {}).get("verified", False),
+                        downloads=data.get("stats", {}).get("downloads", 0),
+                        rating=data.get("stats", {}).get("rating", 0.0),
+                        created_at=data.get("created_at"),
+                        updated_at=data.get("updated_at"),
+                        repository_url=data.get("repository_url"),
+                        description=data.get("description"),
+                        tags=data.get("tags", []),
+                    )
+                elif response.status == 404:
+                    logger.warning(f"Skill {skill_id} not found on ClawHub")
+                    return None
+                else:
+                    logger.error(f"ClawHub API error: {response.status}")
+                    return None
+
+        except aiohttp.ClientError as e:
+            logger.error(f"ClawHub API request failed: {e}")
+            return None
+
+    async def get_community_info(self, skill_id: str) -> ClawHubCommunityInfo | None:
+        """Fetch community information for a skill.
+
+        Args:
+            skill_id: The skill identifier
+
+        Returns:
+            ClawHubCommunityInfo or None if not available
+        """
+        try:
+            session = await self._get_session()
+            url = f"{self.base_url}/skills/{skill_id}/community"
+
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return ClawHubCommunityInfo(
+                        stars=data.get("stars", 0),
+                        forks=data.get("forks", 0),
+                        issues=data.get("open_issues", 0),
+                        contributors=data.get("contributors", 0),
+                        verified=data.get("verified", False),
+                    )
+                elif response.status == 404:
+                    return None
+                else:
+                    logger.error(f"ClawHub community API error: {response.status}")
+                    return None
+
+        except aiohttp.ClientError as e:
+            logger.error(f"ClawHub community API request failed: {e}")
+            return None
+
+    async def download_skill(self, skill_id: str, target_dir: str) -> Path | None:
+        """Download a skill package from ClawHub.
+
+        Args:
+            skill_id: The skill identifier
+            target_dir: Directory to extract the skill to
+
+        Returns:
+            Path to extracted skill directory or None on failure
+        """
+        try:
+            session = await self._get_session()
+            url = f"{self.base_url}/skills/{skill_id}/download"
+
+            async with session.get(url) as response:
+                if response.status != 200:
+                    logger.error(f"Failed to download skill {skill_id}: {response.status}")
+                    return None
+
+                # Read the tarball/zip content
+                content = await response.read()
+
+                # Create target directory
+                skill_dir = Path(target_dir) / skill_id.replace("/", "_")
+                skill_dir.mkdir(parents=True, exist_ok=True)
+
+                # If content is JSON, it's likely skill files directly
+                content_type = response.headers.get("Content-Type", "")
+
+                if "application/json" in content_type:
+                    # Direct file delivery via JSON
+                    files_data = json.loads(content)
+                    for file_path, file_content in files_data.get("files", {}).items():
+                        file_full_path = skill_dir / file_path
+                        file_full_path.parent.mkdir(parents=True, exist_ok=True)
+                        if isinstance(file_content, str):
+                            file_full_path.write_text(file_content, encoding="utf-8")
+                        else:
+                            file_full_path.write_bytes(file_content)
+                else:
+                    # Assume tarball or zip - write and extract
+                    import tarfile
+                    import zipfile
+                    import io
+
+                    archive_path = skill_dir / "archive"
+
+                    if "zip" in content_type or content[:2] == b"PK":
+                        # ZIP file
+                        archive_path.write_bytes(content)
+                        with zipfile.ZipFile(archive_path, "r") as zf:
+                            zf.extractall(skill_dir)
+                    else:
+                        # Assume tarball
+                        archive_path.write_bytes(content)
+                        with tarfile.open(archive_path, "r:*") as tf:
+                            tf.extractall(skill_dir)
+
+                    # Clean up archive
+                    archive_path.unlink(missing_ok=True)
+
+                logger.info(f"Downloaded skill {skill_id} to {skill_dir}")
+                return skill_dir
+
+        except (aiohttp.ClientError, json.JSONDecodeError, OSError) as e:
+            logger.error(f"Failed to download skill {skill_id}: {e}")
+            return None
 
 
 @dataclass
@@ -22,6 +233,7 @@ class ScanConfig:
     include_external_apis: bool = False
     virustotal_api_key: str | None = None
     timeout_seconds: int = 60
+    clawhub_api_key: str | None = None
 
 
 @dataclass
@@ -40,6 +252,7 @@ class ScanResult:
     error_message: str | None = None
     virustotal_result: dict | None = None
     trust_score_details: TrustScoreResult | None = None
+    clawhub_info: ClawHubSkillInfo | None = None
 
 
 class ClawShellScanner:
@@ -81,17 +294,21 @@ class ClawShellScanner:
         self,
         virustotal_api_key: str | None = None,
         custom_patterns: list[dict] | None = None,
+        clawhub_api_key: str | None = None,
     ):
         """Initialize the scanner.
 
         Args:
             virustotal_api_key: Optional VirusTotal API key for comprehensive scans
             custom_patterns: Optional custom patterns to detect
+            clawhub_api_key: Optional ClawHub API key for fetching skills
         """
         self.virustotal_api_key = virustotal_api_key or os.environ.get("VIRUSTOTAL_API_KEY")
+        self.clawhub_api_key = clawhub_api_key or os.environ.get("CLAWHUB_API_KEY")
         self.pattern_detector = MaliciousPatternDetector(custom_patterns)
         self.secret_detector = SecretDetector()
         self.trust_calculator = TrustScoreCalculator()
+        self.clawhub_client = ClawHubAPIClient(api_key=self.clawhub_api_key)
 
     async def scan_skill(
         self,
@@ -120,6 +337,8 @@ class ClawShellScanner:
         skill_name = "unknown"
         manifest = None
         error_message = None
+        virustotal_result = None
+        clawhub_info = None
 
         try:
             # Validate skill path
@@ -155,7 +374,7 @@ class ClawShellScanner:
                     )
                     for f in pattern_findings:
                         findings.append(self._pattern_to_finding(f, "instructions.md"))
-                    patterns_checked += len(MaliciousPatternDetector.MALICIOUS_PATTERNS)
+                    patterns_checked += len(self.pattern_detector.patterns)
 
                 if profile_config["check_secrets"]:
                     secret_findings = self.secret_detector.scan(content, "instructions.md")
@@ -179,12 +398,38 @@ class ClawShellScanner:
             if readme_path.exists():
                 files_scanned += 1
 
+            # Fetch ClawHub info if skill_id looks like a ClawHub identifier
+            author_info = None
+            community_info = None
+            clawhub_info = None
+
+            if skill_id != "unknown" and "/" in skill_id:
+                try:
+                    clawhub_info = await self.clawhub_client.get_skill_info(skill_id)
+                    if clawhub_info:
+                        author_info = {
+                            "name": clawhub_info.author,
+                            "verified": clawhub_info.author_verified,
+                            "downloads": clawhub_info.downloads,
+                        }
+                    community_data = await self.clawhub_client.get_community_info(skill_id)
+                    if community_data:
+                        community_info = {
+                            "stars": community_data.stars,
+                            "forks": community_data.forks,
+                            "issues": community_data.issues,
+                            "contributors": community_data.contributors,
+                            "verified": community_data.verified,
+                        }
+                except Exception as e:
+                    logger.warning(f"Failed to fetch ClawHub info for {skill_id}: {e}")
+
             # Calculate trust score
             trust_result = self.trust_calculator.calculate(
                 findings=findings,
                 manifest=manifest,
-                author_info=None,  # Would be fetched from ClawHub API
-                community_info=None,  # Would be fetched from ClawHub API
+                author_info=author_info,
+                community_info=community_info,
                 behavior_data=None,  # Would come from runtime monitoring
             )
 
@@ -216,6 +461,7 @@ class ClawShellScanner:
             error_message=error_message,
             virustotal_result=virustotal_result,
             trust_score_details=trust_result,
+            clawhub_info=clawhub_info,
         )
 
     async def scan_skill_from_clawhub(
@@ -225,16 +471,108 @@ class ClawShellScanner:
     ) -> ScanResult:
         """Scan a skill directly from ClawHub.
 
+        Downloads the skill from ClawHub API, scans it locally,
+        and includes ClawHub metadata in the trust score calculation.
+
         Args:
-            skill_id: The ClawHub skill identifier
+            skill_id: The ClawHub skill identifier (e.g., "author/skill-name")
             config: Optional scan configuration
 
         Returns:
             ScanResult with findings and trust score
         """
-        # This would fetch the skill from ClawHub and scan it
-        # For now, return a placeholder
-        raise NotImplementedError("ClawHub API integration not yet implemented")
+        start_time = time.time()
+        config = config or ScanConfig(clawhub_api_key=self.clawhub_api_key)
+
+        # Fetch skill info from ClawHub
+        skill_info = await self.clawhub_client.get_skill_info(skill_id)
+        community_info = await self.clawhub_client.get_community_info(skill_id)
+
+        if skill_info is None:
+            # Skill not found on ClawHub
+            return ScanResult(
+                skill_id=skill_id,
+                skill_name="unknown",
+                trust_score=0,
+                risk_level="unknown",
+                recommendation="Skill not found on ClawHub",
+                findings=[],
+                scan_duration_ms=int((time.time() - start_time) * 1000),
+                files_scanned=0,
+                patterns_checked=0,
+                error_message=f"Skill {skill_id} not found on ClawHub",
+            )
+
+        # Download skill to temp directory
+        with tempfile.TemporaryDirectory() as temp_dir:
+            skill_dir = await self.clawhub_client.download_skill(skill_id, temp_dir)
+
+            if skill_dir is None:
+                return ScanResult(
+                    skill_id=skill_id,
+                    skill_name=skill_info.name,
+                    trust_score=0,
+                    risk_level="unknown",
+                    recommendation="Failed to download skill from ClawHub",
+                    findings=[],
+                    scan_duration_ms=int((time.time() - start_time) * 1000),
+                    files_scanned=0,
+                    patterns_checked=0,
+                    error_message="Failed to download skill from ClawHub",
+                    clawhub_info=skill_info,
+                )
+
+            # Perform local scan on downloaded skill
+            result = await self.scan_skill(str(skill_dir), config)
+
+            # Enhance trust score with ClawHub metadata
+            if skill_info or community_info:
+                enhanced_trust = self.trust_calculator.calculate(
+                    findings=result.findings,
+                    manifest={"name": skill_info.name, "version": skill_info.version}
+                    if skill_info
+                    else None,
+                    author_info={
+                        "name": skill_info.author,
+                        "verified": skill_info.author_verified,
+                        "downloads": skill_info.downloads,
+                    }
+                    if skill_info
+                    else None,
+                    community_info={
+                        "stars": community_info.stars,
+                        "forks": community_info.forks,
+                        "issues": community_info.issues,
+                        "contributors": community_info.contributors,
+                        "verified": community_info.verified,
+                    }
+                    if community_info
+                    else None,
+                )
+
+                # Update result with enhanced trust score
+                result = ScanResult(
+                    skill_id=result.skill_id,
+                    skill_name=result.skill_name,
+                    trust_score=enhanced_trust.overall_score,
+                    risk_level=enhanced_trust.risk_level,
+                    recommendation=enhanced_trust.recommendation,
+                    findings=result.findings,
+                    scan_duration_ms=result.scan_duration_ms,
+                    files_scanned=result.files_scanned,
+                    patterns_checked=result.patterns_checked,
+                    error_message=result.error_message,
+                    virustotal_result=result.virustotal_result,
+                    trust_score_details=enhanced_trust,
+                    clawhub_info=skill_info,
+                )
+
+        # Update skill name from ClawHub info if available
+        if skill_info and result.skill_name == "unknown":
+            result.skill_name = skill_info.name
+            result.skill_id = skill_info.skill_id
+
+        return result
 
     async def _scan_source_directory(
         self, src_dir: Path, profile_config: dict
@@ -266,7 +604,7 @@ class ClawShellScanner:
                         )
                         for f in pattern_findings:
                             findings.append(self._pattern_to_finding(f, relative_path))
-                        patterns_checked += len(MaliciousPatternDetector.MALICIOUS_PATTERNS)
+                        patterns_checked += len(self.pattern_detector.patterns)
 
                     # Scan for secrets
                     if profile_config["check_secrets"]:

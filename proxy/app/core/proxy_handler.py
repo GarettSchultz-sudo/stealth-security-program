@@ -6,6 +6,7 @@ logs them, enforces budgets, applies routing rules, and forwards to providers.
 """
 
 import json
+import logging
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -28,8 +29,22 @@ from app.core.token_counter import (
     extract_usage_from_response,
 )
 from app.models.api_log import ApiLog
+from app.security.engine import SecurityEngine, DetectionSummary
+from app.security.models import ResponseAction, SeverityLevel
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+# Global security engine instance (singleton pattern)
+_security_engine: SecurityEngine | None = None
+
+
+def get_security_engine() -> SecurityEngine:
+    """Get the global security engine instance."""
+    global _security_engine
+    if _security_engine is None:
+        _security_engine = SecurityEngine()
+    return _security_engine
 
 
 class ProxyHandler:
@@ -40,6 +55,7 @@ class ProxyHandler:
         self.budget_engine = BudgetEngine(db)
         self.smart_router = SmartRouter(db)
         self.stream_handler = StreamHandler()
+        self.security_engine = get_security_engine()
         self.http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(settings.proxy_timeout_seconds),
             follow_redirects=True,
@@ -99,6 +115,17 @@ class ProxyHandler:
                     "x-acc-budget-status": "exceeded",
                 },
             )
+
+        # Security scan - BEFORE routing and forwarding
+        should_block, security_summary = await self._perform_security_scan(
+            request_data=request_data,
+            user_id=user_id,
+            agent_id=agent_id,
+            request_id=request_id,
+        )
+
+        if should_block and security_summary:
+            return self._create_blocked_response(request_id, security_summary)
 
         # Apply routing rules
         routing_decision = await self.smart_router.route_request(
@@ -229,6 +256,17 @@ class ProxyHandler:
                 media_type="application/json",
                 headers={"x-acc-request-id": str(request_id)},
             )
+
+        # Security scan - BEFORE routing and forwarding
+        should_block, security_summary = await self._perform_security_scan(
+            request_data=request_data,
+            user_id=user_id,
+            agent_id=agent_id,
+            request_id=request_id,
+        )
+
+        if should_block and security_summary:
+            return self._create_blocked_response(request_id, security_summary)
 
         # Routing
         routing_decision = await self.smart_router.route_request(
@@ -512,3 +550,129 @@ class ProxyHandler:
 
         self.db.add(log_entry)
         await self.db.commit()
+
+    async def _perform_security_scan(
+        self,
+        request_data: dict,
+        user_id: uuid.UUID,
+        agent_id: uuid.UUID | None,
+        request_id: uuid.UUID,
+    ) -> tuple[bool, DetectionSummary | None]:
+        """
+        Perform security scan on request before forwarding to upstream API.
+
+        Args:
+            request_data: The request body data
+            user_id: User making the request
+            agent_id: Agent making the request (if any)
+            request_id: Unique request identifier
+
+        Returns:
+            Tuple of (should_block, detection_summary)
+            - should_block: True if request should be blocked
+            - detection_summary: Security scan results or None if error
+        """
+        start_time = time.monotonic()
+
+        try:
+            # Build context for security engine
+            context = {
+                "user_id": str(user_id),
+                "agent_id": str(agent_id) if agent_id else None,
+                "request_id": str(request_id),
+            }
+
+            # Run security analysis
+            summary = await self.security_engine.analyze_request(request_data, context)
+
+            # Log detection latency
+            detection_latency_ms = int((time.monotonic() - start_time) * 1000)
+            if detection_latency_ms > 10:
+                logger.warning(
+                    f"Security detection took {detection_latency_ms}ms (target: <10ms) "
+                    f"for request {request_id}"
+                )
+
+            # Check if request should be blocked
+            should_block = False
+
+            if summary.detected:
+                # Block on HIGH or CRITICAL severity with high confidence
+                if summary.max_severity in [SeverityLevel.HIGH, SeverityLevel.CRITICAL]:
+                    if summary.max_confidence >= Decimal("0.8"):
+                        should_block = True
+                        logger.warning(
+                            f"Blocking request {request_id}: {summary.max_severity.value} severity "
+                            f"threat detected (confidence: {summary.max_confidence}) - "
+                            f"threat types: {[t.value for t in summary.threat_types]}"
+                        )
+                    else:
+                        logger.info(
+                            f"Allowing request {request_id} with {summary.max_severity.value} severity "
+                            f"(confidence {summary.max_confidence} below threshold 0.8)"
+                        )
+                else:
+                    logger.info(
+                        f"Request {request_id} has {summary.max_severity.value} severity findings - "
+                        f"logging but allowing"
+                    )
+
+                # Take actions (log, alert, etc.)
+                await self.security_engine.take_actions(
+                    summary,
+                    request_data=request_data,
+                    context=context,
+                )
+
+            return should_block, summary
+
+        except Exception as e:
+            # On security engine error, log but allow request to proceed
+            # (fail-open policy for availability)
+            logger.error(f"Security engine error for request {request_id}: {e}")
+            return False, None
+
+    def _create_blocked_response(
+        self,
+        request_id: uuid.UUID,
+        summary: DetectionSummary,
+    ) -> Response:
+        """
+        Create a response for a blocked request.
+
+        Args:
+            request_id: The blocked request ID
+            summary: Detection summary with findings
+
+        Returns:
+            Response with blocked status and security details
+        """
+        threat_descriptions = [
+            f"{r.description} ({r.severity.value})"
+            for r in summary.results
+            if r.detected
+        ]
+
+        return Response(
+            content=json.dumps(
+                {
+                    "error": {
+                        "type": "security_violation",
+                        "message": "Request blocked by ClawShield security policy",
+                        "details": {
+                            "threat_types": [t.value for t in summary.threat_types],
+                            "max_severity": summary.max_severity.value,
+                            "confidence": float(summary.max_confidence),
+                            "findings": threat_descriptions[:5],  # Limit details
+                        },
+                    }
+                }
+            ),
+            status_code=403,
+            media_type="application/json",
+            headers={
+                "x-acc-request-id": str(request_id),
+                "x-acc-security-status": "blocked",
+                "x-acc-threat-level": summary.max_severity.value,
+            },
+        )

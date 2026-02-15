@@ -31,6 +31,9 @@ import {
   Clock,
   ArrowUpRight,
   ArrowDownRight,
+  Cloud,
+  Users,
+  Activity,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -85,6 +88,25 @@ interface StatsResponse {
   trend: number
 }
 
+interface ProviderDataItem {
+  provider: string
+  spend_usd: number
+  requests: number
+  tokens: number
+  model_count: number
+  percent_of_total: number
+}
+
+interface AgentDataItem {
+  agent_id: string | null
+  agent_name: string
+  spend_usd: number
+  requests: number
+  tokens: number
+  avg_latency_ms: number
+  percent_of_total: number
+}
+
 // Custom tooltip for charts
 function CustomTooltip({ active, payload, label }: any) {
   if (active && payload && payload.length) {
@@ -137,8 +159,30 @@ export default function AnalyticsPage() {
     },
   })
 
+  // Fetch provider breakdown
+  const { data: providerResponse, isLoading: providerLoading } = useQuery<ProviderDataItem[]>({
+    queryKey: ['providers', days],
+    queryFn: async () => {
+      const response = await fetch(`/api/analytics/providers?days=${days}`)
+      if (!response.ok) throw new Error('Failed to fetch provider data')
+      return response.json()
+    },
+  })
+
+  // Fetch agent breakdown
+  const { data: agentResponse, isLoading: agentLoading } = useQuery<AgentDataItem[]>({
+    queryKey: ['agents', days],
+    queryFn: async () => {
+      const response = await fetch(`/api/analytics/agents?days=${days}`)
+      if (!response.ok) throw new Error('Failed to fetch agent data')
+      return response.json()
+    },
+  })
+
   const chartData = chartResponse?.data || []
   const modelData = modelResponse?.data || []
+  const providerData = providerResponse || []
+  const agentData = agentResponse || []
 
   // Add percent to model data
   const totalModelCost = modelData.reduce((sum, item) => sum + item.total_cost, 0)
@@ -559,6 +603,238 @@ export default function AnalyticsPage() {
                               latency < 1000 ? 'text-amber-400' : 'text-rose-400'
                             )}>
                               {latency < 500 ? 'Fast' : latency < 1000 ? 'Normal' : 'Slow'}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Provider Comparison Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Provider Comparison Chart */}
+        <Card variant="default">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Cloud size={18} className="text-blue-400" />
+              Provider Comparison
+            </div>
+            <span className="text-xs text-slate-500">Spend by provider</span>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="h-72">
+              {providerLoading ? (
+                <div className="h-full flex items-center justify-center text-slate-500">
+                  Loading...
+                </div>
+              ) : providerData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-slate-500">
+                  No data available
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={providerData.slice(0, 6)} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                    <XAxis
+                      type="number"
+                      tick={{ fontSize: 11, fill: '#64748b' }}
+                      tickFormatter={(v) => `$${v}`}
+                    />
+                    <YAxis
+                      dataKey="provider"
+                      type="category"
+                      width={80}
+                      tick={{ fontSize: 11, fill: '#64748b' }}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar
+                      dataKey="spend_usd"
+                      name="Spend"
+                      fill={CHART_COLORS.blue}
+                      radius={[0, 4, 4, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Provider Stats Table */}
+        <Card variant="default">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Activity size={18} className="text-emerald-400" />
+              Provider Details
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead>
+                  <tr className="bg-slate-800/50">
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-400 border-b border-slate-700/50">
+                      Provider
+                    </th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-slate-400 border-b border-slate-700/50">
+                      Requests
+                    </th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-slate-400 border-b border-slate-700/50">
+                      Models
+                    </th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-slate-400 border-b border-slate-700/50">
+                      Share
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {providerLoading ? (
+                    [...Array(5)].map((_, i) => (
+                      <tr key={i} className="border-b border-slate-800/50">
+                        <td className="py-3 px-4" colSpan={4}>
+                          <div className="h-4 bg-slate-700/50 rounded animate-pulse" />
+                        </td>
+                      </tr>
+                    ))
+                  ) : providerData.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-slate-500">
+                        No data available
+                      </td>
+                    </tr>
+                  ) : (
+                    providerData.slice(0, 6).map((row: ProviderDataItem, i: number) => (
+                      <tr
+                        key={i}
+                        className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors"
+                      >
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
+                            />
+                            <span className="text-slate-200 font-medium capitalize">{row.provider}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-300">
+                          {row.requests.toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-300">
+                          {row.model_count}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-cyan-400">
+                          {row.percent_of_total.toFixed(1)}%
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Agent Activity Section */}
+      <Card variant="default">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Users size={18} className="text-purple-400" />
+            Agent Activity Metrics
+          </div>
+          <span className="text-xs text-slate-500">Usage breakdown by agent</span>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="min-w-full">
+              <thead>
+                <tr className="bg-slate-800/50">
+                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-400 border-b border-slate-700/50">
+                    Agent
+                  </th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-slate-400 border-b border-slate-700/50">
+                    Spend
+                  </th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-slate-400 border-b border-slate-700/50">
+                    Requests
+                  </th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-slate-400 border-b border-slate-700/50">
+                    Tokens
+                  </th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-slate-400 border-b border-slate-700/50">
+                    Avg Latency
+                  </th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-slate-400 border-b border-slate-700/50">
+                    Share
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {agentLoading ? (
+                  [...Array(5)].map((_, i) => (
+                    <tr key={i} className="border-b border-slate-800/50">
+                      <td className="py-3 px-4" colSpan={6}>
+                        <div className="h-4 bg-slate-700/50 rounded animate-pulse" />
+                      </td>
+                    </tr>
+                  ))
+                ) : agentData.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-500">
+                      No agent activity data available
+                    </td>
+                  </tr>
+                ) : (
+                  agentData.map((row: AgentDataItem, i: number) => {
+                    const latency = row.avg_latency_ms
+                    return (
+                      <tr
+                        key={i}
+                        className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors"
+                      >
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
+                            />
+                            <span className="text-slate-200 font-medium">{row.agent_name}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-emerald-400">
+                          ${row.spend_usd.toFixed(4)}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-300">
+                          {row.requests.toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-300">
+                          {row.tokens.toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-300">
+                          <span className={cn(
+                            latency < 500 ? 'text-emerald-400' :
+                            latency < 1000 ? 'text-amber-400' : 'text-rose-400'
+                          )}>
+                            {latency}ms
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="w-16 h-2 bg-slate-800 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-purple-500"
+                                style={{ width: `${row.percent_of_total}%` }}
+                              />
+                            </div>
+                            <span className="font-mono text-purple-400 text-xs">
+                              {row.percent_of_total.toFixed(1)}%
                             </span>
                           </div>
                         </td>

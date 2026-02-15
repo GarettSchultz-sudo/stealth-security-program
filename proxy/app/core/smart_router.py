@@ -2,6 +2,7 @@
 Smart routing engine for model selection.
 
 Evaluates routing rules to determine the best model for a request.
+Includes cost optimization and model fallback capabilities.
 """
 
 import uuid
@@ -13,8 +14,53 @@ from typing import Any
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.pricing_data import get_pricing
+from app.core.pricing_data import PRICING_TABLE, ModelPricing, get_pricing
 from app.models.routing_rule import RoutingRule
+
+
+# Fallback chains for models when primary is unavailable
+# Ordered from best to worst alternative within same capability tier
+FALLBACK_CHAINS: dict[str, list[str]] = {
+    # Claude 4.x Opus tier
+    "claude-opus-4-5": ["claude-sonnet-4-5", "claude-3-5-sonnet-20241022", "claude-haiku-4-5"],
+    "claude-opus-4-5-20250929": ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5"],
+    # Claude 4.x Sonnet tier
+    "claude-sonnet-4-5": ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-haiku-4-5"],
+    "claude-sonnet-4-5-20250929": ["claude-sonnet-4-5", "claude-3-5-sonnet-20241022", "claude-haiku-4-5"],
+    "claude-sonnet-4-20250514": ["claude-sonnet-4-5", "claude-3-5-sonnet-20241022", "claude-haiku-4-5"],
+    # Claude 4.x Haiku tier
+    "claude-haiku-4-5": ["claude-haiku-4-5-20251001", "claude-3-5-haiku-20241022"],
+    "claude-haiku-4-5-20251001": ["claude-haiku-4-5", "claude-3-5-haiku-20241022"],
+    # Claude 3.5 series
+    "claude-3-5-sonnet-20241022": ["claude-sonnet-4-5", "claude-haiku-4-5", "claude-3-5-haiku-20241022"],
+    "claude-3-5-haiku-20241022": ["claude-haiku-4-5", "gpt-4o-mini"],
+    # GPT-4 series
+    "gpt-4o": ["gpt-4o-2024-11-20", "gpt-4o-mini", "claude-sonnet-4-5"],
+    "gpt-4o-2024-11-20": ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-5"],
+    "gpt-4o-mini": ["claude-haiku-4-5", "gemini-2.0-flash"],
+    "gpt-4-turbo": ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-5"],
+    "gpt-4": ["gpt-4-turbo", "gpt-4o", "claude-opus-4-5"],
+    # OpenAI o-series (reasoning models)
+    "o1": ["claude-opus-4-5", "o1-mini"],
+    "o1-mini": ["o3-mini", "deepseek-reasoner", "claude-sonnet-4-5"],
+    "o3-mini": ["o1-mini", "deepseek-reasoner", "claude-sonnet-4-5"],
+    # Gemini series
+    "gemini-2.5-pro-preview": ["gemini-1.5-pro", "claude-sonnet-4-5", "gpt-4o"],
+    "gemini-2.0-flash": ["gemini-1.5-flash", "gpt-4o-mini", "claude-haiku-4-5"],
+    "gemini-1.5-pro": ["gemini-2.5-pro-preview", "claude-sonnet-4-5", "gpt-4o"],
+    "gemini-1.5-flash": ["gemini-2.0-flash", "gpt-4o-mini", "claude-haiku-4-5"],
+    # DeepSeek
+    "deepseek-chat": ["claude-haiku-4-5", "gpt-4o-mini", "gemini-2.0-flash"],
+    "deepseek-reasoner": ["o1-mini", "o3-mini", "claude-sonnet-4-5"],
+    # Groq
+    "llama-3.3-70b-versatile": ["llama-3.1-8b-instant", "claude-sonnet-4-5", "gpt-4o"],
+    "llama-3.1-8b-instant": ["claude-haiku-4-5", "gpt-4o-mini", "gemini-2.0-flash"],
+    "mixtral-8x7b-32768": ["llama-3.3-70b-versatile", "claude-sonnet-4-5", "gpt-4o"],
+    # Mistral
+    "mistral-large-2411": ["claude-sonnet-4-5", "gpt-4o", "mistral-small-2402"],
+    "mistral-small-2402": ["claude-haiku-4-5", "gpt-4o-mini", "gemini-2.0-flash"],
+    "codestral-2405": ["claude-sonnet-4-5", "gpt-4o", "mistral-small-2402"],
+}
 
 
 @dataclass
@@ -278,3 +324,189 @@ class SmartRouter:
         ) * target_pricing.output_per_mtok
 
         return max(Decimal("0"), original_cost - target_cost)
+
+    def get_cheapest_model(
+        self,
+        capability_requirements: dict[str, Any] | None = None,
+        provider_filter: list[str] | None = None,
+        min_context_window: int | None = None,
+    ) -> dict[str, Any]:
+        """
+        Find the cheapest model that meets specified capability requirements.
+
+        Args:
+            capability_requirements: Dict with optional keys:
+                - "supports_vision": bool
+                - "supports_streaming": bool
+                - "supports_function_calling": bool
+                - "min_output_tokens": int
+            provider_filter: List of allowed providers (e.g., ["anthropic", "openai"])
+            min_context_window: Minimum context window size required
+
+        Returns:
+            Dict with model info including pricing, or None if no match
+        """
+        capability_requirements = capability_requirements or {}
+
+        # Capability metadata for models (simplified for MVP)
+        MODEL_CAPABILITIES: dict[str, dict[str, Any]] = {
+            # Anthropic models
+            "claude-opus-4-5": {"vision": True, "streaming": True, "function_calling": True, "context": 200000, "max_output": 16384},
+            "claude-opus-4-5-20250929": {"vision": True, "streaming": True, "function_calling": True, "context": 200000, "max_output": 16384},
+            "claude-sonnet-4-5": {"vision": True, "streaming": True, "function_calling": True, "context": 200000, "max_output": 16384},
+            "claude-sonnet-4-5-20250929": {"vision": True, "streaming": True, "function_calling": True, "context": 200000, "max_output": 16384},
+            "claude-sonnet-4-20250514": {"vision": True, "streaming": True, "function_calling": True, "context": 200000, "max_output": 16384},
+            "claude-haiku-4-5": {"vision": True, "streaming": True, "function_calling": True, "context": 200000, "max_output": 8192},
+            "claude-haiku-4-5-20251001": {"vision": True, "streaming": True, "function_calling": True, "context": 200000, "max_output": 8192},
+            "claude-3-5-sonnet-20241022": {"vision": True, "streaming": True, "function_calling": True, "context": 200000, "max_output": 8192},
+            "claude-3-5-haiku-20241022": {"vision": True, "streaming": True, "function_calling": True, "context": 200000, "max_output": 8192},
+            # OpenAI models
+            "gpt-4o": {"vision": True, "streaming": True, "function_calling": True, "context": 128000, "max_output": 16384},
+            "gpt-4o-2024-11-20": {"vision": True, "streaming": True, "function_calling": True, "context": 128000, "max_output": 16384},
+            "gpt-4o-mini": {"vision": True, "streaming": True, "function_calling": True, "context": 128000, "max_output": 16384},
+            "gpt-4-turbo": {"vision": True, "streaming": True, "function_calling": True, "context": 128000, "max_output": 4096},
+            "gpt-4": {"vision": False, "streaming": True, "function_calling": True, "context": 8192, "max_output": 4096},
+            "o1": {"vision": False, "streaming": False, "function_calling": False, "context": 200000, "max_output": 100000},
+            "o1-mini": {"vision": False, "streaming": False, "function_calling": False, "context": 128000, "max_output": 65536},
+            "o3-mini": {"vision": False, "streaming": True, "function_calling": True, "context": 200000, "max_output": 100000},
+            # Google models
+            "gemini-2.5-pro-preview": {"vision": True, "streaming": True, "function_calling": True, "context": 1000000, "max_output": 65536},
+            "gemini-2.0-flash": {"vision": True, "streaming": True, "function_calling": True, "context": 1000000, "max_output": 8192},
+            "gemini-1.5-pro": {"vision": True, "streaming": True, "function_calling": True, "context": 2000000, "max_output": 8192},
+            "gemini-1.5-flash": {"vision": True, "streaming": True, "function_calling": True, "context": 1000000, "max_output": 8192},
+            # DeepSeek
+            "deepseek-chat": {"vision": False, "streaming": True, "function_calling": True, "context": 64000, "max_output": 8192},
+            "deepseek-reasoner": {"vision": False, "streaming": True, "function_calling": False, "context": 64000, "max_output": 8192},
+            # Groq
+            "llama-3.3-70b-versatile": {"vision": False, "streaming": True, "function_calling": True, "context": 128000, "max_output": 8192},
+            "llama-3.1-8b-instant": {"vision": False, "streaming": True, "function_calling": True, "context": 128000, "max_output": 8192},
+            "mixtral-8x7b-32768": {"vision": False, "streaming": True, "function_calling": True, "context": 32768, "max_output": 4096},
+            # Mistral
+            "mistral-large-2411": {"vision": False, "streaming": True, "function_calling": True, "context": 128000, "max_output": 8192},
+            "mistral-small-2402": {"vision": False, "streaming": True, "function_calling": True, "context": 32000, "max_output": 8192},
+            "codestral-2405": {"vision": False, "streaming": True, "function_calling": True, "context": 256000, "max_output": 8192},
+        }
+
+        candidates: list[tuple[str, ModelPricing, Decimal]] = []
+
+        for model_id, pricing in PRICING_TABLE.items():
+            # Check provider filter
+            if provider_filter and pricing.provider not in provider_filter:
+                continue
+
+            # Get capabilities
+            caps = MODEL_CAPABILITIES.get(model_id, {})
+            if not caps:
+                continue  # Skip unknown models
+
+            # Check capability requirements
+            if capability_requirements.get("supports_vision") and not caps.get("vision", False):
+                continue
+            if capability_requirements.get("supports_streaming") and not caps.get("streaming", True):
+                continue
+            if capability_requirements.get("supports_function_calling") and not caps.get("function_calling", True):
+                continue
+            if min_context_window and caps.get("context", 0) < min_context_window:
+                continue
+            min_output = capability_requirements.get("min_output_tokens")
+            if min_output and caps.get("max_output", 0) < min_output:
+                continue
+
+            # Calculate average cost per 1M tokens (50% input, 50% output assumption)
+            avg_cost = (pricing.input_per_mtok + pricing.output_per_mtok) / Decimal("2")
+            candidates.append((model_id, pricing, avg_cost))
+
+        if not candidates:
+            return {
+                "model": None,
+                "provider": None,
+                "error": "No models match the specified requirements",
+            }
+
+        # Sort by average cost (cheapest first)
+        candidates.sort(key=lambda x: x[2])
+
+        # Return cheapest option
+        best_model, best_pricing, best_avg_cost = candidates[0]
+        return {
+            "model": best_model,
+            "provider": best_pricing.provider,
+            "input_cost_per_mtok": float(best_pricing.input_per_mtok),
+            "output_cost_per_mtok": float(best_pricing.output_per_mtok),
+            "avg_cost_per_mtok": float(best_avg_cost),
+            "cache_supported": best_pricing.cache_create_per_mtok > Decimal("0"),
+        }
+
+    def get_fallback_model(self, primary_model: str, unavailable_models: list[str] | None = None) -> dict[str, Any]:
+        """
+        Get the best fallback model when the primary model is unavailable.
+
+        Args:
+            primary_model: The model that is unavailable
+            unavailable_models: List of models known to be unavailable
+
+        Returns:
+            Dict with fallback model info, or original if no fallback exists
+        """
+        unavailable_models = unavailable_models or []
+        unavailable_set = set(unavailable_models)
+        unavailable_set.add(primary_model)
+
+        # Get fallback chain for this model
+        fallback_chain = FALLBACK_CHAINS.get(primary_model, [])
+
+        # Find first available fallback
+        for fallback_model in fallback_chain:
+            if fallback_model not in unavailable_set:
+                pricing = get_pricing(fallback_model)
+                if pricing:
+                    return {
+                        "model": fallback_model,
+                        "provider": pricing.provider,
+                        "input_cost_per_mtok": float(pricing.input_per_mtok),
+                        "output_cost_per_mtok": float(pricing.output_per_mtok),
+                        "is_fallback": True,
+                        "original_model": primary_model,
+                    }
+
+        # No fallback available - check if we can use a generic fallback
+        generic_fallbacks = [
+            "claude-sonnet-4-5",
+            "gpt-4o",
+            "claude-haiku-4-5",
+        ]
+
+        for generic in generic_fallbacks:
+            if generic not in unavailable_set:
+                pricing = get_pricing(generic)
+                if pricing:
+                    return {
+                        "model": generic,
+                        "provider": pricing.provider,
+                        "input_cost_per_mtok": float(pricing.input_per_mtok),
+                        "output_cost_per_mtok": float(pricing.output_per_mtok),
+                        "is_fallback": True,
+                        "original_model": primary_model,
+                        "fallback_type": "generic",
+                    }
+
+        # No fallback available at all
+        return {
+            "model": primary_model,
+            "provider": None,
+            "is_fallback": False,
+            "error": "No fallback models available",
+            "original_model": primary_model,
+        }
+
+    def get_fallback_chain(self, model: str) -> list[str]:
+        """
+        Get the full fallback chain for a model.
+
+        Args:
+            model: Model to get fallback chain for
+
+        Returns:
+            List of fallback models in order of preference
+        """
+        return FALLBACK_CHAINS.get(model, [])
