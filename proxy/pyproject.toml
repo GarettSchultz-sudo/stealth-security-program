@@ -71,6 +71,7 @@ ignore = [
     "SIM105",  # contextlib.suppress (try/except/pass is clearer)
     "SIM117",  # Nested with statements (sometimes clearer)
     "UP037",   # Remove quotes from type annotation (breaks SQLAlchemy forward refs)
+    "UP042",   # Use StrEnum instead of str, Enum (style preference)
 ]
 
 [tool.mypy]
