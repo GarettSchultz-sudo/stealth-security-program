@@ -1,0 +1,23 @@
+{
+  "name": "clawshell",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ClawShell - AI Cost Control & Security for OpenClaw Ecosystem",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:proxy\" \"npm run dev:dashboard\"",
+    "dev:proxy": "cd api/proxy && uvicorn main:app --reload --port 8000",
+    "dev:dashboard": "cd dashboard && npm run dev",
+    "deploy": "./scripts/deploy.sh",
+    "db:setup": "python scripts/setup_supabase.py",
+    "db:migrate": "psql $SUPABASE_DB_URL -f supabase/migrations/001_initial.sql && psql $SUPABASE_DB_URL -f supabase/migrations/002_pricing.sql",
+    "db:seed": "psql $SUPABASE_DB_URL -f supabase/seed.sql",
+    "models:update": "python scripts/update_models.py",
+    "models:check": "python scripts/update_models.py --dry-run"
+  },
+  "keywords": ["ai", "cost-control", "llm", "proxy", "budget", "openclaw", "clawshell"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

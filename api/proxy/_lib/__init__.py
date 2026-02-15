@@ -1,0 +1,3 @@
+"""
+ClawShell Shared Library
+"""
